@@ -784,8 +784,8 @@ const usageMarkup = ReactDOMServer.renderToStaticMarkup(React.createElement(modu
   t,
 }))
 check('a row card summarises its turn: tokens, tools, duration',
-  usageMarkup.includes('8.1k→2.3k') && usageMarkup.includes('3 ') && usageMarkup.includes('31s'),
-  usageMarkup.slice(usageMarkup.indexOf('8.1k') - 40, usageMarkup.indexOf('8.1k') + 40))
+  usageMarkup.includes('↑8.1k ↓2.3k') && usageMarkup.includes('3 ') && usageMarkup.includes('31s'),
+  usageMarkup.slice(usageMarkup.indexOf('↑8.1k') - 40, usageMarkup.indexOf('↑8.1k') + 40))
 check('a row with no usage data shows none of it',
   (() => {
     const bare = graphFor([{ id: 's1', title: '会话', live: true }], rowsOf(3).map((row) => ({
@@ -813,7 +813,7 @@ const usageDetails = ReactDOMServer.renderToStaticMarkup(React.createElement(mod
   onClose: () => {},
 }))
 check('the details pane breaks the usage down',
-  usageDetails.includes(t('usage.title')) && usageDetails.includes('8075') && usageDetails.includes('2324')
+  usageDetails.includes(t('usage.title')) && usageDetails.includes('↑ 8075') && usageDetails.includes('↓ 2324')
   && usageDetails.includes('10399') && usageDetails.includes(t('usage.cacheRead'))
   && usageDetails.includes('deepseek-flash') && usageDetails.includes('31s'),
   usageDetails.slice(usageDetails.indexOf(t('usage.title')), usageDetails.indexOf(t('usage.title')) + 160))
@@ -822,7 +822,13 @@ check('the details pane breaks the usage down',
 // Reported from a screenshot: the card column was anchored left, so a capped card
 // left all of the slack on the right and the panel looked uneven.
 const wideGraph = graphFor([{ id: 's1', title: '会话', live: true }], rowsOf(4).map((row) => ({
-  ...row, sessionId: 's1', manifest: true, stats: { files: 36, bytes: 801900 },
+  ...row,
+  sessionId: 's1',
+  manifest: true,
+  stats: { files: 36, bytes: 801900 },
+  usage: { inputTokens: 5200, outputTokens: 9200, totalTokens: 14400 },
+  toolCalls: 3,
+  durationMs: 31000,
 })), { width: 1400 })
 const wideLayout = wideGraph.layout
 check('the card column is centred, so the slack is split evenly',
@@ -842,6 +848,17 @@ check('a capped card stays inside the canvas on both sides',
   wideLayout.cardW <= 760 && wideLayout.cardX + wideLayout.cardW <= wideLayout.width
   && wideLayout.cardX >= wideLayout.railLeft,
   JSON.stringify([wideLayout.cardX, wideLayout.cardW, wideLayout.width]))
+
+// The usage summary sits in the card's RIGHT column, after the file/KB figure, with
+// ↑ input and ↓ output — not appended to the prompt line and not a "→" between them.
+const wideMarkup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
+  layout: wideGraph.layout, selectedId: undefined, currentSessionId: 's1', onSelect: () => {}, t,
+}))
+check('the card right column reads "files · size · ↑in ↓out token"',
+  /36 文件 · [\d.]+ (KB|MB) · ↑[\d.]+[kM]? ↓[\d.]+[kM]? token/.test(wideMarkup),
+  wideMarkup.slice(Math.max(0, wideMarkup.indexOf('36 文件')), wideMarkup.indexOf('36 文件') + 90))
+check('the two token counts never use a "→" between them',
+  !/[\d.]+→[\d.]+/.test(wideMarkup))
 
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
