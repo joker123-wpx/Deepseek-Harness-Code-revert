@@ -772,6 +772,30 @@ check('the files are restored by the panel itself, before the agent is asked',
 check('the delegated re-ask no longer asks for the files twice',
   shellSource.includes('prompt: text,\n                restoreWorkspace: false,'))
 
+// ── a fold header must ride the rail of the rows it hides ─────────────────
+// Reported as "the rails are wrong after a rewind": the header carried no session
+// id, so the layout dropped it on lane 0 while its own rows sat on another rail.
+const railSessions = [{ id: 's1', title: '会话一', live: true }, { id: 's2', title: '会话二', live: true }]
+const railRows = [
+  ...Array.from({ length: 4 }, (_, index) => ({
+    id: `a${index}`, sessionId: 's1', afterTurn: index, kind: 'auto', manifest: true, prompt: `A${index}`,
+  })),
+  ...Array.from({ length: 14 }, (_, index) => ({
+    id: `b${index}`, sessionId: 's2', afterTurn: index, kind: 'auto', manifest: true, prompt: `B${index}`,
+  })),
+]
+const railGraph = graphFor(railSessions, railRows, { expandedGroups: new Set(), limit: 10, width: 900 })
+const railHeaders = railGraph.layout.nodes.filter((node) => node.group === true)
+check('a fold header rides the rail of the session whose rows it hides',
+  railHeaders.length === 1 && railHeaders[0].column === 1
+  && railHeaders[0].railX > railGraph.layout.nodes.find((node) => node.checkpoint.sessionId === 's1').railX,
+  JSON.stringify(railHeaders.map((node) => [node.checkpoint.sessionId, node.column, node.railX])))
+check('every visible row of the first session stays on lane 0',
+  railGraph.layout.nodes.filter((node) => node.checkpoint.sessionId === 's1').every((node) => node.column === 0),
+  JSON.stringify(railGraph.layout.nodes.map((node) => [node.checkpoint.sessionId, node.column])))
+check('both sessions keep their own rail',
+  railGraph.layout.lanes.length === 2, String(railGraph.layout.lanes.length))
+
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
 }))
