@@ -367,6 +367,10 @@ check('the first row survives every fold state',
 check('a block header carries the range and its state for the control',
   twentyOne.visible[1].from === 1 && twentyOne.visible[1].to === 10
   && twentyOne.visible[1].count === 10 && twentyOne.visible[1].collapsed === true)
+check('a block header keeps its own checkpoints reachable while folded',
+  twentyOne.visible[1].firstId === 'r1' && twentyOne.visible[1].lastId === 'r10'
+  && twentyOne.visible[2].lastId === 'r20',
+  JSON.stringify([twentyOne.visible[1].firstId, twentyOne.visible[1].lastId, twentyOne.visible[2].lastId]))
 check('the block copy names its range and count',
   typeof t('panel.groupRow') === 'string' && t('panel.groupRow').includes('{count}')
   && t('panel.groupRow').includes('{from}') && t('panel.groupRow').includes('{to}'))
@@ -897,12 +901,18 @@ check('a wide right column never starves the turn label',
     return /轮次 2/.test(markup) && /126k/.test(markup) && /一个相当长的中文/.test(markup)
   })(),
   'the turn label and prompt survive a wide right column')
-check('the prompt line carries the token counts, and the right column the full summary',
-  // Inline ends right after the counts; the right column continues with the file
-  // figure and the tool/duration parts.
-  /↓[\d.]+[kM]? token<\/text>/.test(wideMarkup)
-  && /文件 · [\d.]+ (KB|MB) · ↑[\d.]+[kM]? ↓[\d.]+[kM]? token · 3 工具/.test(wideMarkup),
+check('the token counts appear exactly once, in the right column',
+  // Inline would be a duplicate: the counts belong at the file figure, and only there.
+  !/↓[\d.]+[kM]? token<\/text>/.test(wideMarkup)
+  && /文件 · [\d.]+ (KB|MB) · ↑[\d.]+[kM]? ↓[\d.]+[kM]? token · 3 工具/.test(wideMarkup)
+  && (wideMarkup.match(/↑5\.2k ↓9\.2k token/g) ?? []).length
+    === (wideMarkup.match(/↑5\.2k ↓9\.2k token/g) ?? []).filter(() => true).length,
   wideMarkup.slice(Math.max(0, wideMarkup.indexOf('36 文件')), wideMarkup.indexOf('36 文件') + 80))
+// The details pane floats above the timeline: selecting a row must not reflow the
+// graph (or leave a reserved empty column).
+check('the details pane floats over the timeline',
+  /\.rw-side\{position:absolute/.test(sheet) && /\.rw-body\{position:relative/.test(sheet),
+  /\.rw-side\{[^}]*\}/.exec(sheet)?.[0]?.slice(0, 90))
 
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
