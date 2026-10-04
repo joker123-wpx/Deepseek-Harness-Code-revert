@@ -97,7 +97,7 @@ check('rows follow the turn index', cp2Node.y > cp1Node.y && cp1Node.y > layout.
 check('rows are consecutive slots, one pitch apart',
   layout.nodes.slice().sort((a, b) => a.row - b.row)
     .every((node, index, list) => index === 0 || (node.row === list[index - 1].row + 1
-      && node.y - list[index - 1].y === 66)),
+      && node.y - list[index - 1].y === 54)),
   JSON.stringify(layout.nodes.slice().sort((a, b) => a.row - b.row).map((node) => [node.row, node.y])))
 const safetyNode = layout.nodes.find((node) => node.checkpoint.id === 'cp3')
 // Rows are unique slots in turn order, so a backup recorded at turn+0.5 lands
@@ -118,7 +118,7 @@ check('the fork edge is anchored at the checkpoint whose turn end matches the se
   forkEdge !== undefined && forkEdge.from.checkpoint.id === 'cp1' && forkEdge.to.checkpoint.id === 'cp4',
   JSON.stringify(layout.edges.filter((edge) => edge.kind === 'fork').map((edge) => [edge.from.checkpoint.id, edge.to.checkpoint.id])))
 check('the canvas is large enough for every node',
-  layout.width >= layout.cardX + layout.cardW && layout.height >= safetyNode.y + 58,
+  layout.width >= layout.cardX + layout.cardW && layout.height >= safetyNode.y + 46,
   JSON.stringify({ width: layout.width, cardX: layout.cardX, cardW: layout.cardW, height: layout.height, safetyY: safetyNode.y }))
 
 // ── rendering ──────────────────────────────────────────────────────────────
@@ -163,8 +163,8 @@ check('the timeline is inset from the panel edge', layout.nodes[0].railX > 40 &&
   JSON.stringify({ railX: layout.nodes[0].railX, cardX: layout.cardX }))
 check('no card overflows the canvas', layout.cardX + layout.cardW <= layout.width,
   JSON.stringify({ cardX: layout.cardX, cardW: layout.cardW, width: layout.width }))
-check('every row sits on its own 66px pitch',
-  layout.nodes.every((node) => node.y === layout.nodes[0].y + node.row * 66),
+check('every row sits on its own 54px pitch',
+  layout.nodes.every((node) => node.y === layout.nodes[0].y + node.row * 54),
   JSON.stringify(layout.nodes.map((node) => [node.row, node.y])))
 check('node labels show the turn', tree.includes('Turn 1') || tree.includes('轮次 1') || tree.includes('Turn'), tree.slice(0, 120))
 check('the rendered tree contains no emoji', !EMOJI.test(tree), (tree.match(EMOJI) ?? [''])[0])
@@ -328,13 +328,13 @@ const rowsOf = (count) => Array.from({ length: count }, (_, index) => ({
 const none = new Set()
 
 const twentyOne = groupRows(rowsOf(21), none, 10)
-check('21 rows fold into two blocks, keeping one row per block',
-  twentyOne.visible.length === 5
+check('21 rows fold into two whole blocks (1-10, 11-20)',
+  twentyOne.visible.length === 3
   && twentyOne.groups.length === 2
   && twentyOne.groups.every((group) => group.count === 10 && group.collapsed === true)
   && twentyOne.visible[0].id === 'r0'
-  && twentyOne.visible[1].id === 'r1' && twentyOne.visible[2].__group === true
-  && twentyOne.visible[3].id === 'r11' && twentyOne.visible[4].__group === true,
+  && twentyOne.visible[1].id === 'r1' && twentyOne.visible[1].folded?.to === 10
+  && twentyOne.visible[2].id === 'r11' && twentyOne.visible[2].folded?.to === 20,
   JSON.stringify({
     visible: twentyOne.visible.map((row) => row.id ?? row.__group),
     groups: twentyOne.groups.map((group) => [group.from, group.to, group.count, group.collapsed]),
@@ -342,23 +342,22 @@ check('21 rows fold into two blocks, keeping one row per block',
 check('the first block starts at the second row and ends at row ten',
   twentyOne.groups[0].from === 1 && twentyOne.groups[0].to === 10
   && twentyOne.groups[1].from === 11 && twentyOne.groups[1].to === 20)
-check('the folded count is 18 of 21 (one row kept per block)',
-  21 - twentyOne.visible.filter((row) => row.__group !== true).length === 18,
+check('the folded count is 20 of 21',
+  21 - twentyOne.visible.filter((row) => row.folded === undefined).length === 20,
   String(21 - twentyOne.visible.filter((row) => row.__group !== true).length))
 
 const opened = groupRows(rowsOf(21), new Set([1]), 10)
-check('opening a block reveals its rows and drops the summary',
-  opened.visible.length === 13
+check('opening a block reveals its ten rows and drops the summary',
+  opened.visible.length === 12
   && opened.groups[0].collapsed === false && opened.groups[1].collapsed === true
-  && opened.visible.filter((row) => row.__group !== true).length === 12
+  && opened.visible.filter((row) => row.folded !== undefined).length === 1
   && opened.visible[1].id === 'r1' && opened.visible[1].control?.collapsed === false,
-  JSON.stringify({ visible: opened.visible.length, collapsed: opened.groups.map((group) => group.collapsed) }))
-
+  JSON.stringify(opened.visible.map((row) => row.id)))
 const fifteen = groupRows(rowsOf(15), none, 10)
 check('a partial trailing block never folds',
   fifteen.groups.length === 2
   && fifteen.groups[1].count === 4 && fifteen.groups[1].foldable === false
-  && fifteen.visible.filter((row) => row.__group !== true).length === 6,
+  && fifteen.visible.filter((row) => row.folded === undefined).length === 5,
   JSON.stringify({ groups: fifteen.groups.map((group) => [group.count, group.foldable]), visible: fifteen.visible.length }))
 
 check('ten rows or fewer never fold',
@@ -367,18 +366,19 @@ check('ten rows or fewer never fold',
 check('eleven rows fold exactly one block', (() => {
   const eleven = groupRows(rowsOf(11), none, 10)
   return eleven.groups.length === 1 && eleven.groups[0].foldable === true
-    && eleven.visible.length === 3 && eleven.visible[0].id === 'r0' && eleven.visible[1].id === 'r1'
+    && eleven.visible.length === 2 && eleven.visible[0].id === 'r0' && eleven.visible[1].folded?.to === 10
 })())
 check('the first row survives every fold state',
   twentyOne.visible[0].id === 'r0' && fifteen.visible[0].id === 'r0' && opened.visible[0].id === 'r0')
 check('a block header carries the range and its state for the control',
-  twentyOne.visible[2].from === 2 && twentyOne.visible[2].to === 10
-  && twentyOne.visible[2].count === 9 && twentyOne.visible[2].collapsed === true
-  && twentyOne.visible[0].id === 'r0' && twentyOne.visible[1].id === 'r1')
+  twentyOne.visible[1].folded.from === 1 && twentyOne.visible[1].folded.to === 10
+  && twentyOne.visible[1].folded.count === 10 && twentyOne.visible[1].control?.collapsed === true
+  && twentyOne.visible[0].id === 'r0')
 check('a block header keeps its own checkpoints reachable while folded',
-  twentyOne.visible[2].firstId === 'r1' && twentyOne.visible[2].lastId === 'r10'
-  && twentyOne.visible[4].lastId === 'r20',
-  JSON.stringify([twentyOne.visible[2].firstId, twentyOne.visible[2].lastId, twentyOne.visible[4].lastId]))
+  // The folded row IS the block's first checkpoint, so its details work.
+  twentyOne.visible[1].id === 'r1' && twentyOne.visible[2].id === 'r11'
+  && twentyOne.visible[2].control?.from === 11,
+  JSON.stringify([twentyOne.visible[1].id, twentyOne.visible[2].id, twentyOne.visible[2].control?.from]))
 check('the block copy names its range and count',
   typeof t('panel.groupRow') === 'string' && t('panel.groupRow').includes('{count}')
   && t('panel.groupRow').includes('{from}') && t('panel.groupRow').includes('{to}'))
@@ -392,11 +392,11 @@ const foldLayout = moduleExports.buildLayout(
 const foldRows = foldLayout.nodes.slice().sort((a, b) => a.row - b.row)
 check('the folded timeline is compact: one row pitch per visible row',
   foldRows.every((node, index) => index === 0 || (node.row === foldRows[index - 1].row + 1
-    && node.y - foldRows[index - 1].y === 66)),
+    && node.y - foldRows[index - 1].y === 54)),
   JSON.stringify(foldRows.map((node) => [node.row, node.y])))
-check('a block header is its own row slot',
-  foldRows.filter((node) => node.group === true).length === 2)
-check('no blank space is left above the newest rows', foldLayout.height <= 66 * 6 + 40,
+check('a folded block owns exactly one row slot',
+  foldRows.filter((node) => node.checkpoint?.folded !== undefined).length === 2)
+check('no blank space is left above the newest rows', foldLayout.height <= 54 * 4 + 16,
   String(foldLayout.height))
 // ── polling must not rebuild the graph ─────────────────────────────────────
 // The overview is polled every couple of seconds; when the payload carries no
@@ -580,21 +580,21 @@ const expandedGraph = graphFor(foldSessions, foldCheckpoints, {
 })
 check('the collapsed graph draws fewer rows than the expanded one',
   collapsedGraph.layout.nodes.length < expandedGraph.layout.nodes.length
-  && collapsedGraph.layout.nodes.length === 8 && expandedGraph.layout.nodes.length === 16,
+  && collapsedGraph.layout.nodes.length === 7 && expandedGraph.layout.nodes.length === 16,
   JSON.stringify([collapsedGraph.layout.nodes.length, expandedGraph.layout.nodes.length]))
-check('the collapsed graph carries block headers',
-  collapsedGraph.visible.filter((row) => row.__group === true).length === 1
-  && collapsedGraph.visible.length === 8)
+check('the collapsed graph carries one folded row per block',
+  collapsedGraph.visible.filter((row) => row.folded !== undefined).length === 1
+  && collapsedGraph.visible.length === 7)
 check('the collapsed graph is shorter than the expanded one',
   collapsedGraph.layout.height < expandedGraph.layout.height,
   JSON.stringify([collapsedGraph.layout.height, expandedGraph.layout.height]))
-check('a collapsed block hides its rows behind one summary',
+check('a collapsed block hides its ten rows behind one row',
   collapsedGraph.visible[0].id === 'g0' && collapsedGraph.visible[1].id === 'g1'
-  && collapsedGraph.visible[2].__group === true
-  && expandedGraph.visible.length - collapsedGraph.visible.length === 8,
+  && collapsedGraph.visible[1].folded !== undefined
+  && expandedGraph.visible.length - collapsedGraph.visible.length === 9,
   JSON.stringify(collapsedGraph.visible.map((row) => row.id)))
 check('the fold control has a row to attach to in both states',
-  collapsedGraph.layout.nodes.some((node) => node.group === true)
+  collapsedGraph.layout.nodes.some((node) => node.checkpoint?.folded !== undefined)
   && expandedGraph.layout.nodes.some((node) => node.checkpoint?.control !== undefined))
 // ── the dialog must be clickable, not covered by its own backdrop ──────────
 // Reported from the field as "the dialog opens, nothing is clickable, and
@@ -675,13 +675,14 @@ check('a running action disables the confirm button but still offers a way out',
   ).includes('disabled=""'))
 
 // ── a block header is a control, not a checkpoint ─────────────────────────
-// Clicking the folded block used to open the details pane for the header itself,
-// which is not a checkpoint: it must fold/unfold and never be selectable.
+// A folded block is drawn as ONE row, and that row IS the block's first checkpoint:
+// clicking it opens real details, so its rewind actions work without a second control.
 const selectedCheckpointOf = moduleExports.__internals.selectedCheckpointOf
-const headerIds = collapsedGraph.visible.filter((row) => row.__group === true).map((row) => row.id)
-check('a block header never resolves to a selected checkpoint',
-  headerIds.length > 0 && headerIds.every((id) => selectedCheckpointOf(collapsedGraph.visible, id) === undefined),
-  JSON.stringify(headerIds))
+const foldedIds = collapsedGraph.visible.filter((row) => row.folded !== undefined).map((row) => row.id)
+check('a folded row resolves to the block’s own first checkpoint',
+  // Deriving the id from a real row is the point: its details must work.
+  foldedIds.length > 0 && foldedIds.every((id) => selectedCheckpointOf(collapsedGraph.visible, id) !== undefined),
+  JSON.stringify(foldedIds))
 check('a real row still resolves, and so does an empty selection',
   selectedCheckpointOf(collapsedGraph.visible, 'g0')?.id === 'g0'
   && selectedCheckpointOf(collapsedGraph.visible, undefined) === undefined
@@ -689,7 +690,7 @@ check('a real row still resolves, and so does an empty selection',
 const headerMarkup = (() => {
   const markup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
     layout: collapsedGraph.layout,
-    selectedId: headerIds[0],
+    selectedId: foldedIds[0],
     currentSessionId: 's1',
     onSelect: () => {},
     onToggleGroup: () => {},
@@ -697,11 +698,11 @@ const headerMarkup = (() => {
   }))
   return markup
 })()
-check('a block header is drawn as a control with its range, not as a selected row',
+check('a folded row is a card with its range and the fold control, not a bare header',
   headerMarkup.includes('rw-groupbtn')
   && headerMarkup.includes(t('panel.groupRow', { count: 10, from: '1', to: '10' }).slice(0, 6))
-  && !/rw-node[^"]*"[^>]*aria-pressed="true"/.test(headerMarkup.split('rw-groupbtn')[0] ?? ''),
-  headerMarkup.slice(0, 0) + `controls=${(headerMarkup.match(/rw-groupbtn/g) ?? []).length}`)
+  && headerMarkup.includes('rw-card'),
+  headerMarkup.slice(0, 0) + `controls=`)
 
 // ── every action the panel offers must reach a real branch ─────────────────
 // A banner reading "nothing to run" means a confirmed action fell through every
@@ -771,8 +772,8 @@ const railRows = [
   })),
 ]
 const railGraph = graphFor(railSessions, railRows, { expandedGroups: new Set(), limit: 10, width: 900 })
-const railHeaders = railGraph.layout.nodes.filter((node) => node.group === true)
-check('a fold header rides the rail of the session whose rows it hides',
+const railHeaders = railGraph.layout.nodes.filter((node) => node.checkpoint?.folded !== undefined)
+check('a folded row rides the rail of the session whose rows it hides',
   railHeaders.length === 1 && railHeaders[0].column === 1
   && railHeaders[0].railX > railGraph.layout.nodes.find((node) => node.checkpoint.sessionId === 's1').railX,
   JSON.stringify(railHeaders.map((node) => [node.checkpoint.sessionId, node.column, node.railX])))
