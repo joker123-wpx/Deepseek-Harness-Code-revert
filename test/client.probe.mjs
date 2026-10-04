@@ -758,6 +758,41 @@ check('the timeline draws no branch title text',
     && JSON.stringify(elbows) === JSON.stringify([[0, 7], [8, 15]]),
     JSON.stringify({ deadTurns, liveKept, newest: newest.slice(0, 3), elbows }))
 }
+// ── the confirm dialog names the turn ranges ───────────────────────────────
+// Asked for: "the prompt when rolling back is unclear — it keeps asking me about
+// earlier information". It must say which turns are kept and which are removed.
+{
+  const dialogMarkup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.ConfirmDialog, {
+    request: {
+      checkpoint: { id: 'cp7', afterTurn: 7 },
+      conversation: 'inplace',
+      workspace: 'none',
+      reask: true,
+      text: '改好的提问',
+    },
+    plan: { conversation: { ok: true, droppedTurns: [8, 9, 10] } },
+    t,
+    onCancel: () => {},
+    onConfirm: () => {},
+    busy: false,
+  }))
+  check('the dialog states the kept range, the removed range and where the new turn starts',
+    dialogMarkup.includes(t('notice.keptTo', { turn: '7' }))
+    && dialogMarkup.includes(t('notice.droppedRange', { from: '8', to: '10' }))
+    && dialogMarkup.includes(t('notice.newTurnAt', { turn: '8' })),
+    'ranges named in the dialog')
+  const spreadMarkup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.ConfirmDialog, {
+    request: { checkpoint: { id: 'cp7', afterTurn: 7 }, conversation: 'inplace', workspace: 'none' },
+    plan: { conversation: { ok: true, droppedTurns: [9, 11] } },
+    t,
+    onCancel: () => {},
+    onConfirm: () => {},
+    busy: false,
+  }))
+  check('a non-contiguous removal lists the turns instead of inventing a range',
+    spreadMarkup.includes(t('notice.droppedList', { turns: '9、11' })),
+    'listed turns')
+}
 // ── every action the panel offers must reach a real branch ─────────────────
 // A banner reading "nothing to run" means a confirmed action fell through every
 // branch of the executor. Nothing in the UI may produce such a request, so the
