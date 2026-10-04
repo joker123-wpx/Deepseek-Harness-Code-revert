@@ -1095,13 +1095,24 @@ check('the cards keep their width however many branches there are',
   for (const turn of [147, 148, 149, 150, 151, 152, 153, 154]) {
     rows.push({ id: `cp${turn}`, sessionId: 's1', afterTurn: turn, manifest: true, prompt: `p${turn}` })
   }
-  // 149's next turn was rewound; 148's was not: that is the line boundary.
-  for (const row of rows) if (row.afterTurn === 144 || row.afterTurn === 149 || row.afterTurn === 152) row.alreadyRewound = true
   const memory = (turn) => moduleExports.__internals.reaskAnchorFor(rows, rows.find((r) => r.afterTurn === turn), cuts)?.afterTurn
-  check('the 5th re-ask of a line restores the row before its first re-ask',
+  // Consecutive re-asks with no ordinary message in between keep ONE memory: 150 and 153
+  // are the two cuts of the same run, so both go back to the row before its first cut.
+  check('the 5th re-ask of a run restores the row before the run started',
     memory(153) === 149 && memory(154) === 149, JSON.stringify([memory(153), memory(154)]))
-  check('and re-asking the line start itself still lands there',
+  check('and re-asking the run start itself still lands there',
     memory(150) === 149 && memory(151) === 149, JSON.stringify([memory(150), memory(151)]))
+  // A message typed into the conversation ends the run: the next re-ask anchors on it.
+  const withTyped = rows.map((row) => (row.afterTurn === 162 ? row : row))
+  const extended = [
+    ...rows,
+    { id: 'cp161', sessionId: 's1', afterTurn: 161, manifest: true, prompt: 'p161', ownTurnSurfaced: true },
+    { id: 'cp162', sessionId: 's1', afterTurn: 162, manifest: true, prompt: 'p162', ownTurnSurfaced: true },
+  ]
+  check('a message typed after the run moves the memory to the row above it',
+    moduleExports.__internals.reaskAnchorFor(extended, extended.find((r) => r.afterTurn === 162), cuts)?.afterTurn === 161,
+    String(moduleExports.__internals.reaskAnchorFor(extended, extended.find((r) => r.afterTurn === 162), cuts)?.afterTurn))
+  void withTyped
 }
 // ── the confirm dialog names the turn ranges ───────────────────────────────
 // Asked for: "the prompt when rolling back is unclear — it keeps asking me about
