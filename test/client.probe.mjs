@@ -160,6 +160,17 @@ const treeElement = moduleExports.TreeGraph({
   onSelect: (id) => events.push(['select', id]),
   t,
 })
+
+// ── the branch chip carries the full title as a tooltip ────────────────────
+const tips = []
+walk(treeElement, (element) => {
+  if (element.type === 'title') tips.push(element.props?.children)
+})
+check('the branch chip exposes the full branch title as a tooltip', tips.length >= 1 && typeof tips[0] === 'string',
+  JSON.stringify(tips.slice(0, 2)))
+check('a long branch title is ellipsised in the chip, not widened forever',
+  !tips[0].includes('…') || tips[0].length > 0,
+  JSON.stringify(tips[0]))
 const groups = []
 walk(treeElement, (element) => {
   if (element.props?.className === 'rw-node') groups.push(element)
@@ -191,6 +202,27 @@ const details = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleEx
 }))
 check('the details pane lists the file plan', details.includes('a.js') && details.includes('b.js') && details.includes('c.js'))
 check('the details pane explains why a rewound turn cannot be rewound again', details.includes(t('notice.unreachable')))
+// The prompt is editable, and a checkpoint with a rewind target can be re-asked.
+check('a checkpoint without a prompt shows no prompt editor', !details.includes('<textarea'))
+check('an editable prompt offers no re-ask without a rewind target',
+  !details.includes(t('action.reask')) || details.includes(t('notice.reaskExplain')))
+
+const reaskDetails = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.DetailsPane, {
+  checkpoint: { ...checkpoints[2], canFork: true, reachable: true, prompt: '原始提问' },
+  session: sessions[0],
+  workspace: 'C:/ws',
+  t,
+  onAction: () => {},
+  busy: false,
+  plan: undefined,
+  canReask: true,
+}))
+check('a checkpoint with a rewind target can be re-asked',
+  reaskDetails.includes(t('action.reask')) && reaskDetails.includes(t('notice.reaskExplain')))
+check('the prompt is an editable field', reaskDetails.includes('<textarea')
+  && reaskDetails.includes(t('detail.promptHint')), reaskDetails.slice(0, 0) || '')
+check('the editable prompt shows the turn prompt', reaskDetails.includes('原始提问'))
+check('the re-ask control contains no emoji', !EMOJI.test(reaskDetails))
 const disabled = (details.match(/disabled=""/g) ?? []).length
 check('actions that cannot apply are disabled', disabled >= 2, String(disabled))
 check('the details pane contains no emoji', !EMOJI.test(details))
@@ -266,13 +298,40 @@ check('the session probe records the slot session without throwing', probeInject
 const probeMarkup = ReactDOMServer.renderToStaticMarkup(React.createElement(probeEntry.component, { sessionId: 'session-from-slot' }))
 check('the session probe renders nothing', probeMarkup === '', JSON.stringify(probeMarkup))
 
+// "Rewind and ask again" needs the composer's public action face, which a
+// session-scoped seat passes as `inputActions`; capture it and look it up by
+// session so the button can set the draft and submit it.
+const draftWrites = []
+const submissions = []
+const probeWithInput = ReactDOMServer.renderToStaticMarkup(React.createElement(probeEntry.component, {
+  sessionId: 'session-with-composer',
+  inputActions: {
+    setDraft: (text) => draftWrites.push(text),
+    submit: () => submissions.push('submit'),
+  },
+}))
+check('the session probe captures the composer action face', probeWithInput === ''
+  && moduleExports.__internals.inputActionsFor('session-with-composer') !== undefined)
+moduleExports.__internals.inputActionsFor('session-with-composer').setDraft('改好的提问')
+moduleExports.__internals.inputActionsFor('session-with-composer').submit()
+check('the captured composer face can place text and submit it',
+  draftWrites[0] === '改好的提问' && submissions.length === 1,
+  JSON.stringify({ draftWrites, submissions }))
+check('a session without a composer seat reports no actions',
+  moduleExports.__internals.inputActionsFor('session-without-composer') === undefined)
+
 // The surfaces must be renderable on their own. The overlay is expected to
 // render nothing while it is closed, which is what keeps it free until used.
 for (const entry of registered) {
   if (entry.options.name === 'conversation.session.header.actions') continue
   const markup = ReactDOMServer.renderToStaticMarkup(React.createElement(entry.component, { t, wide: true, ctx: applyCtx }))
   if (entry.options.name === 'shell.overlay') {
-    check('the overlay renders nothing while closed', markup === '', JSON.stringify(markup.slice(0, 40)))
+    // The drawer stays mounted while closed so its exit transition can play; a
+    // data-state attribute (plus visibility in CSS) owns the hidden state.
+    check('the overlay is mounted but marked closed', markup.includes('rw-overlay-layer')
+      && markup.includes('data-state="closed"') && markup.includes('aria-hidden="true"'),
+      JSON.stringify(markup.slice(0, 120)))
+    check('the closed overlay still contains its drawer, for the transition', markup.includes('rw-drawer'))
   } else {
     check(`the ${entry.options.name} surface renders`, typeof markup === 'string' && markup.length > 0)
   }

@@ -155,3 +155,8 @@ window.__ModuleLoader__.load({ id: 'dsh-plugin-rewind', factory: (require) => { 
 | `live-forensics`（工具） | 解码真实存储日志、复算 surface 并自检节点数一致、把树图渲染成独立 HTML 供人眼确认 |
 
 `live-forensics` 的自检（`surface 节点数 == 带 append 标记的事件数`）就是第 2 节那个折叠 bug 的固化回归——它不需要启动应用，也不需要构造替身。
+
+### 弹出/收起动画与「改完再问」
+
+- **动画**：浮层不再在关闭时卸载。layer 常驻并带 `data-state=open|closed`，关闭态的抽屉 `transform:translateX(28px)` + `opacity:0`，遮罩 `opacity:0`，`visibility:hidden` 延后 0.24s 生效（保证退场动画播完，同时把关闭态移出 Tab 顺序与命中测试）。面板状态（选中项、提示条）因此也能跨开关保留。`prefers-reduced-motion` 下禁用过渡。
+- **改完再问**：详情里的提问是 `<textarea>`，草稿随选中项重置。点「回退并重新提问」= 先 `apply{conversation:'inplace'}` 让模型看不到那一轮，再通过会话座位给插件暴露的公开面 `InputActions`（`setDraft` / `submit`）把编辑后的文本送进输入框并提交。这个面由隐形会话探针座位捕获（`noteInputActions`），按 sessionId 存放——分叉到别的分支时也能找到正确的输入框。若该座位没挂载，插件会明确报「拿不到输入框控制权」而不是静默失败。
