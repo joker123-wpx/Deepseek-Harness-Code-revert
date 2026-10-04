@@ -1058,6 +1058,25 @@ check('the cards keep their width however many branches there are',
   check('re-asking 129 still restores 127, past both of its own cuts',
     memory(129) === 127 && memory(128) === 127, JSON.stringify([memory(128), memory(129)]))
 }
+// ── the re-ask line anchor is sticky and survives a refresh ────────────────
+// Reported: the first re-ask of a line used 141, the next two also used 141, then the
+// fourth drifted to 144 — reviving the memory of a turn the line had already undone. The
+// anchor is remembered per session so every later re-ask keeps the same memory.
+{
+  const store = new Map()
+  globalThis.localStorage = {
+    getItem: (key) => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, value),
+  }
+  const internals = moduleExports.__internals
+  check('no line anchors before any re-ask', Object.keys(internals.readLineAnchors()).length === 0, undefined)
+  internals.writeLineAnchor('s1', { id: 'cp141', turn: 141 })
+  check('the line anchor is remembered per session',
+    internals.readLineAnchors().s1?.turn === 141, JSON.stringify(internals.readLineAnchors()))
+  check('and it is written where a refresh can find it again',
+    String(store.get('dsh-rewind.lineAnchors')).includes('cp141'), String(store.get('dsh-rewind.lineAnchors')))
+  delete globalThis.localStorage
+}
 // ── the confirm dialog names the turn ranges ───────────────────────────────
 // Asked for: "the prompt when rolling back is unclear — it keeps asking me about
 // earlier information". It must say which turns are kept and which are removed.
