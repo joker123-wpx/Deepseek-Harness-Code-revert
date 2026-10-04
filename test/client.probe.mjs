@@ -736,11 +736,12 @@ check('the timeline draws no branch title text',
   const markup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
     layout: deadGraph.layout, currentSessionId: 's1', onSelect: () => {}, t,
   }))
-  // The dead row contributes no number anywhere: its gutter label and its card title
-  // are both empty, while its prompt is still shown and the live rows keep theirs.
+  // A rewound row keeps its number (so the card and the rail agree — both read the
+  // node's own turn) and gets a strike-through line over it.
   const numbers = (markup.match(/轮次/g) ?? []).length
-  check('a rewound row shows no turn number anywhere',
-    numbers === 2 && !markup.includes('轮次 1') && markup.includes('被回退的一轮'),
+  check('a rewound row keeps its number, struck through, matching the rail',
+    markup.includes('rw-strike') && numbers >= 4
+    && markup.includes('轮次 1') && markup.includes('被回退的一轮'),
     `numbers=${numbers}`)
 }
 // ── the graph never squeezes the rows ──────────────────────────────────────
