@@ -1013,6 +1013,27 @@ check('the cards keep their width however many branches there are',
   check('re-asking 124 still anchors on 121',
     moduleExports.__internals.reaskAnchorFor(line, line[4], cuts)?.id === 'cp121', undefined)
 }
+// ── a row whose prompt is off the surface is history, whatever the forks say ─
+// Reported live: "128 was replaced but is still drawn solid — only 130 greyed". The
+// per-row fact is `ownTurnSurfaced`: the host says whether this turn's own prompt is
+// still on the surface. A cut whose continuation rows all look dead to the cumulative
+// flags never produced a fork, so the cut-range path alone missed such rows.
+{
+  const rows = [
+    { id: 'cp127', sessionId: 's1', afterTurn: 127, manifest: true, prompt: '写9', ownTurnSurfaced: true, abandoned: true, alreadyRewound: true },
+    // replaced by a re-ask, yet no fork claims it
+    { id: 'cp128', sessionId: 's1', afterTurn: 128, manifest: true, prompt: '删除所有数字', ownTurnSurfaced: false, ownTurnRewound: true },
+    { id: 'cp129', sessionId: 's1', afterTurn: 129, manifest: true, prompt: '把1改为0', ownTurnSurfaced: true, abandoned: true, alreadyRewound: true },
+    { id: 'cp130', sessionId: 's1', afterTurn: 130, manifest: true, prompt: '把2改为0', ownTurnSurfaced: false, ownTurnRewound: true },
+    { id: 'cp131', sessionId: 's1', afterTurn: 131, manifest: true, prompt: '把3改为0', ownTurnSurfaced: true },
+  ]
+  const graph = graphFor([{ id: 's1', title: '会话', live: true, cuts: [{ index: 0, fromTurn: 130, toTurn: 130, count: 1 }] }], rows, { width: 1200, limit: 10 ** 9 })
+  const dead = new Map(graph.layout.nodes.map((node) => [node.checkpoint.afterTurn, node.dead === true]))
+  check('a row whose prompt is off the surface is grey even without a fork',
+    dead.get(128) === true && dead.get(130) === true, JSON.stringify([...dead]))
+  check('rows still on the surface stay live',
+    dead.get(127) !== true && dead.get(129) !== true && dead.get(131) !== true, JSON.stringify([...dead]))
+}
 // ── the confirm dialog names the turn ranges ───────────────────────────────
 // Asked for: "the prompt when rolling back is unclear — it keeps asking me about
 // earlier information". It must say which turns are kept and which are removed.
