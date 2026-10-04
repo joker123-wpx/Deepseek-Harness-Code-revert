@@ -159,7 +159,7 @@ lib/conversation.js  session side: turn analysis, surface fold, rewind dialects
 lib/store.js         persistence: CAS blobs, manifests, index, trash, GC
 lib/rpc.js           transport: one RPC route with a loopback fence
 lib/client.js        browser half: three slots, SVG tree, details pane, dialogs
-test/                7 offline probes + 2 diagnostics (352 assertions)
+test/                7 offline probes + 2 diagnostics (357 assertions)
 ```
 
 ```bash

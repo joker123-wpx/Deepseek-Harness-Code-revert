@@ -515,6 +515,35 @@ check('the footer log names the call a request will issue',
   && describeRequest({ conversation: 'fork', workspace: 'restore' }).includes('fork'),
   JSON.stringify([describeRequest({ conversation: 'inplace' }), describeRequest({ reask: true })]))
 
+// ── the fold toggle must change the picture it draws ───────────────────────
+// The state used to flip while the graph stayed the same, because the layout was
+// memoized on the fetched payload instead of on the visible rows. graphFor() is
+// the single entry point for that pipeline, so this is directly assertable.
+const graphFor = moduleExports.__internals.graphFor
+const foldSessions = [{ id: 's1', title: '会话', live: true }]
+const foldCheckpoints = Array.from({ length: 16 }, (_, index) => ({
+  id: `g${index}`, sessionId: 's1', afterTurn: index, kind: 'auto', manifest: true, prompt: `问 ${index}`,
+}))
+const collapsedGraph = graphFor(foldSessions, foldCheckpoints, { expanded: false, limit: 10, width: 900 })
+const expandedGraph = graphFor(foldSessions, foldCheckpoints, { expanded: true, limit: 10, width: 900 })
+check('the collapsed graph draws fewer rows than the expanded one',
+  collapsedGraph.layout.nodes.length < expandedGraph.layout.nodes.length
+  && collapsedGraph.layout.nodes.length === 12 && expandedGraph.layout.nodes.length === 16,
+  JSON.stringify([collapsedGraph.layout.nodes.length, expandedGraph.layout.nodes.length]))
+check('the collapsed graph carries the fold summary row',
+  collapsedGraph.visible.some((row) => row.__fold === true)
+  && expandedGraph.visible.every((row) => row.__fold !== true))
+check('the collapsed graph is shorter than the expanded one',
+  collapsedGraph.layout.height < expandedGraph.layout.height,
+  JSON.stringify([collapsedGraph.layout.height, expandedGraph.layout.height]))
+check('the toggle keeps the first row and adds a summary in its place',
+  collapsedGraph.visible[0].id === 'g0'
+  && collapsedGraph.visible.length === expandedGraph.visible.length - 4,
+  JSON.stringify(collapsedGraph.visible.map((row) => row.id)))
+check('the fold control has a row to attach to in both states',
+  collapsedGraph.layout.nodes.some((node) => node.fold === true)
+  && expandedGraph.layout.nodes.some((node) => node.turn === expandedGraph.fold.turnFrom))
+
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
 }))
