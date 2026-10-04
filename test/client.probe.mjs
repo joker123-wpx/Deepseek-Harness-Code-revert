@@ -991,20 +991,27 @@ check('the cards keep their width however many branches there are',
     { id: 'cp104', sessionId: 's1', afterTurn: 104, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'b' },
     { id: 'cp105', sessionId: 's1', afterTurn: 105, manifest: false, canRestoreWorkspace: false, reachable: true, prompt: 'c' },
   ]
-  // The anchor is the row before the START of the range the turn sits in, so it does not
-  // move as the line is re-asked again: their words — "122's re-ask goes back to 121, and
-  // even after re-asking up to 180 the memory is still 121's completion record".
-  const cuts = [{ fromTurn: 122, toTurn: 180, count: 59 }]
+  // The memory is the completion record of the turn BEFORE THE FIRST RE-ASK, and never
+  // advances: re-asking 122 → 123 pins 121; re-asking 123 → 124 must STILL pin 121 — the
+  // cuts accumulate 122, 123, … and the anchor walks back over the consecutive cut starts.
+  const cuts = [
+    { index: 0, fromTurn: 122, toTurn: 122, count: 1 },
+    { index: 1, fromTurn: 123, toTurn: 123, count: 1 },
+    { index: 2, fromTurn: 124, toTurn: 124, count: 1 },
+  ]
   const line = [
     { id: 'cp120', sessionId: 's1', afterTurn: 120, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'w' },
     { id: 'cp121', sessionId: 's1', afterTurn: 121, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'x' },
     { id: 'cp122', sessionId: 's1', afterTurn: 122, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'y' },
-    { id: 'cp180', sessionId: 's1', afterTurn: 180, manifest: false, canRestoreWorkspace: false, reachable: true, prompt: 'z' },
+    { id: 'cp123', sessionId: 's1', afterTurn: 123, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'z' },
+    { id: 'cp124', sessionId: 's1', afterTurn: 124, manifest: false, canRestoreWorkspace: false, reachable: true, prompt: 'n' },
   ]
-  const first = moduleExports.__internals.reaskAnchorFor(line, line[2], cuts)
-  check('re-asking 122 anchors on 121', first?.id === 'cp121', JSON.stringify(first?.id))
-  const later = moduleExports.__internals.reaskAnchorFor(line, line[3], cuts)
-  check('and re-asking 180 still anchors on 121', later?.id === 'cp121', JSON.stringify(later?.id))
+  check('re-asking 122 anchors on 121',
+    moduleExports.__internals.reaskAnchorFor(line, line[2], cuts)?.id === 'cp121', undefined)
+  check('re-asking 123 still anchors on 121 (never revives 122)',
+    moduleExports.__internals.reaskAnchorFor(line, line[3], cuts)?.id === 'cp121', undefined)
+  check('re-asking 124 still anchors on 121',
+    moduleExports.__internals.reaskAnchorFor(line, line[4], cuts)?.id === 'cp121', undefined)
 }
 // ── the confirm dialog names the turn ranges ───────────────────────────────
 // Asked for: "the prompt when rolling back is unclear — it keeps asking me about
