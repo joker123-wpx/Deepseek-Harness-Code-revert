@@ -559,6 +559,103 @@ check('status keeps a log of state-changing calls',
   JSON.stringify(telemetry.rpcLog))
 check('the call log is bounded', engine.rpcLog.length <= 40, String(engine.rpcLog.length))
 
+// ── a panel-asked rollback lands at the next turn boundary, invisibly ──────
+// A surface replacement is only loadable from inside an open turn and step, so a
+// rollback the panel asks for while idle is HELD and applied at the first step of
+// the next turn: nothing is written into the conversation for the user to read.
+const scheduledOverview = await engine.overview(freshId)
+const scheduledTarget = scheduledOverview.checkpoints.find((checkpoint) => checkpoint.reachable === true
+  && checkpoint.hasNextTurn === true)
+check('a reachable checkpoint exists to schedule against', scheduledTarget !== undefined,
+  JSON.stringify(scheduledOverview.checkpoints.map((cp) => [cp.afterTurn, cp.reachable, cp.hasNextTurn])))
+const scheduledFirst = await engine.scheduleRewind(freshId, scheduledTarget.id)
+check('the panel can schedule a conversation rollback', scheduledFirst.scheduled === true,
+  JSON.stringify(scheduledFirst))
+check('the overview reports the waiting rollback',
+  engine.scheduledOf(freshId)?.checkpointId === scheduledTarget.id,
+  JSON.stringify(engine.scheduledOf(freshId)))
+const beforeSchedule = fresh.deriveMessages().length
+check('nothing is applied before a turn opens',
+  engine.applyScheduled(fresh) === undefined && fresh.deriveMessages().length === beforeSchedule)
+// A turn opens; in the app the plugin's own session/event hook runs this line.
+const nextTurnNumber = (scheduledTarget.afterTurn ?? 0) + 1
+fresh.append('turn/start', { turn: nextTurnNumber })
+fresh.append('step/start', { turn: nextTurnNumber, step: 1 })
+const applied = engine.applyScheduled(fresh)
+check('it lands inside the newly opened turn and step',
+  applied !== undefined
+  && fresh.events.some((event) => typeof event.data?.message?.id === 'string'
+    && event.data.message.id.startsWith('rewind-')
+    && event.data.turn === nextTurnNumber && event.data.step === 1),
+  JSON.stringify({ applied: applied?.conversation, tail: fresh.events.slice(-1)[0]?.type }))
+check('the scheduled rollback shortened the visible history',
+  applied !== undefined && fresh.deriveMessages().length < beforeSchedule,
+  `${beforeSchedule} -> ${fresh.deriveMessages().length}`)
+check('the scheduled entry is consumed exactly once',
+  engine.scheduledOf(freshId) === undefined && engine.applyScheduled(fresh) === undefined)
+check('the outcome is reported to the panel',
+  engine.pendingResultOf(freshId)?.ok === true
+  && engine.pendingResultOf(freshId)?.scheduled === true,
+  JSON.stringify(engine.pendingResultOf(freshId)))
+fresh.append('step/end', { turn: nextTurnNumber, step: 1 })
+fresh.append('turn/end', { turn: nextTurnNumber, reason: { kind: 'completed' } })
+// A third session, so the reentrancy retry has an applicable target to work with.
+const retrySessionId = 'session-probe-0003'
+const retrySession = makeSession(retrySessionId)
+for (let turn = 1; turn <= 3; turn += 1) {
+  retrySession.append('turn/start', { turn })
+  retrySession.append('user/message', {
+    id: 'q-' + turn,
+    role: 'user',
+    source: { kind: 'user', rpcId: 'rpc-q-' + turn },
+    content: [{ type: 'text', text: '重试提问 ' + turn }],
+  }, { surfaceOp: 'append' })
+  retrySession.append('assistant/message', {
+    turn,
+    step: 1,
+    message: assistantMessage('重试回答 ' + turn),
+  }, { surfaceOp: 'append', sourceEventSeqs: [] })
+  retrySession.append('turn/end', { turn, reason: { kind: 'completed' } })
+}
+await engine.backfill(retrySessionId)
+
+
+// The hook fires INSIDE the session's own append, and a session refuses a
+// reentrant append. That exact refusal used to reach the user as "the queued
+// rewind failed"; it is now retried once the publish that triggered it finished.
+{
+  const retryOverview = await engine.overview(retrySessionId)
+  const retryTarget = retryOverview.checkpoints.find((checkpoint) => checkpoint.reachable === true
+    && checkpoint.hasNextTurn === true)
+  await engine.scheduleRewind(retrySessionId, retryTarget.id)
+  const originalAppend = retrySession.append.bind(retrySession)
+  let refusedOnce = false
+  retrySession.append = (...args) => {
+    if (!refusedOnce) {
+      refusedOnce = true
+      throw new Error('session append cannot reenter while another append is being published')
+    }
+    return originalAppend(...args)
+  }
+  const retryTurn = (retryTarget.afterTurn ?? 0) + 1
+  originalAppend('turn/start', { turn: retryTurn })
+  originalAppend('step/start', { turn: retryTurn, step: 1 })
+  const firstAttempt = engine.applyScheduled(retrySession)
+  check('a reentrant append is retried, not reported as a failure',
+    firstAttempt === undefined && engine.scheduledOf(retrySessionId) !== undefined
+    && engine.pendingResultOf(freshId)?.ok !== false,
+    JSON.stringify({ retries: engine.scheduledOf(retrySessionId)?.retries, last: engine.pendingResultOf(retrySessionId) }))
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  check('the retry lands the marker inside the same turn',
+    engine.scheduledOf(retrySessionId) === undefined
+    && retrySession.events.some((event) => typeof event.data?.message?.id === 'string'
+      && event.data.message.id.startsWith('rewind-') && event.data.turn === retryTurn),
+    JSON.stringify(engine.pendingResultOf(retrySessionId)))
+  retrySession.append = originalAppend
+  originalAppend('step/end', { turn: retryTurn, step: 1 })
+  originalAppend('turn/end', { turn: retryTurn, reason: { kind: 'completed' } })
+}
+
 await fs.rm(sandbox, { recursive: true, force: true })
 
 const failed = results.filter((entry) => !entry.ok)

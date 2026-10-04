@@ -736,42 +736,6 @@ check('the dismiss control exists so a banner can be cleared by hand',
     && deps.drafts[0] === '改写的提问' && deps.submissions.length === 1,
     JSON.stringify({ calls: deps.calls.map((call) => call[1]), drafts: deps.drafts }))
 }
-{
-  // The probe's local `t` does not interpolate params, so the templates are checked
-  // for their placeholders and the filled result is asserted with a local fill.
-  const fillPrompt = (text, params) => String(text)
-    .replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? `{${name}}`))
-  const codePrompt = moduleExports.__internals.agentRewindPrompt(t, {
-    checkpointId: 'cp-anchor', turn: 9, prompt: '改写的提问', restoreWorkspace: true,
-  })
-  const conversationOnly = moduleExports.__internals.agentRewindPrompt(t, {
-    checkpointId: 'cp-anchor', turn: 9, prompt: '改写的提问', restoreWorkspace: false,
-  })
-  check('the delegated re-ask asks for the code as well as the conversation',
-    fillPrompt(codePrompt, { checkpointId: 'cp-anchor', turn: 9, prompt: '改写的提问' }).includes('cp-anchor')
-    && codePrompt !== conversationOnly
-    && t('notice.agentRewindCodeReask').includes('action=apply')
-    && t('notice.agentRewindCodeReask').includes('工作区'),
-    codePrompt.slice(0, 140))
-  check('a checkpoint without files falls back to the conversation-only wording',
-    conversationOnly === t('notice.agentRewindReask', { checkpointId: 'cp-anchor', turn: '9', prompt: '改写的提问' }))
-}
-
-// ── the panel gets out of the way once a rollback lands ────────────────────
-// Reported: after a rewind the panel stayed open and the files had not changed.
-// The files are the panel's own job (no open turn needed), so they change at once;
-// the conversation marker is delegated; and a landed rollback closes the drawer.
-const shellSource = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
-check('a landed rollback closes the panel',
-  (shellSource.match(/if \(variant === 'overlay'\) setOverlay\(false\)/g) ?? []).length >= 2,
-  String((shellSource.match(/if \(variant === 'overlay'\) setOverlay\(false\)/g) ?? []).length))
-check('the files are restored by the panel itself, before the agent is asked',
-  shellSource.includes('const restoreFilesNow = React.useCallback')
-  && shellSource.indexOf('await restoreFilesNow(selected)') < shellSource.indexOf('await runViaAgent(agentRewindPrompt(t, {\n                checkpointId: anchor.id'),
-  'restoreFilesNow precedes the delegation')
-check('the delegated re-ask no longer asks for the files twice',
-  shellSource.includes('prompt: text,\n                restoreWorkspace: false,'))
-
 // ── a fold header must ride the rail of the rows it hides ─────────────────
 // Reported as "the rails are wrong after a rewind": the header carried no session
 // id, so the layout dropped it on lane 0 while its own rows sat on another rail.
@@ -817,8 +781,15 @@ check('a checkpoint without a prompt shows no prompt editor', !details.includes(
 check('an editable prompt offers no re-ask without a rewind target',
   /disabled="[^>]*>[^<]*(回退|rewind)/i.test(details) || details.includes(t('notice.reaskExplain')),
   details.slice(Math.max(0, details.indexOf(t('notice.reaskViaAgent')) - 90), details.indexOf(t('notice.reaskViaAgent')) + 8))
-check('a row without a rewind target shows the disabled control with its reason',
-  details.includes(t('notice.reaskViaAgent')) || details.includes(t('action.reask')))
+check('a row without a rewind target shows the control with its reason',
+  // The gold control only renders with a prompt, so this row shows the
+  // in-place family instead — whichever wording the release uses.
+  details.includes('rw-actions')
+  && [t('notice.inplaceViaAgent'), t('notice.inplaceCodeViaAgent'), t('action.inplace'), t('action.inplaceCode')]
+    .some((label) => details.includes(label)))
+// The client bundle is also read as text, to pin what the rendered markup cannot
+// show: which text is handed to the composer, and where the panel closes.
+const shellSource = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
 
 const reaskDetails = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.DetailsPane, {
   checkpoint: { ...checkpoints[2], canFork: true, reachable: true, prompt: '原始提问' },
@@ -849,68 +820,40 @@ const delegatedDetails = ReactDOMServer.renderToStaticMarkup(React.createElement
 }))
 check('a checkpoint with a rewind target can be re-asked',
   reaskDetails.includes(t('action.reask')) && reaskDetails.includes(t('notice.reaskExplain')))
-check('the re-ask control names the delegation when the panel cannot write',
+check('the re-ask control still works when the panel cannot write',
   delegatedDetails.includes(t('notice.reaskViaAgent')) && delegatedDetails.includes(t('notice.agentExplain'))
   && !delegatedDetails.includes('disabled=""'),
   delegatedDetails.slice(Math.max(0, delegatedDetails.indexOf(t('notice.reaskViaAgent')) - 80), delegatedDetails.indexOf(t('notice.reaskViaAgent')) + 10))
-// The probe's local `t` does not interpolate params, so the template is checked
-// for its placeholders and the filled-in result is asserted with a local fill.
-const fill = (text, params) => String(text)
-  .replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? `{${name}}`))
-const reaskPrompt = moduleExports.__internals.agentRewindPrompt(t, {
-  checkpointId: 'cp-anchor', turn: 9, prompt: '改写的提问',
-})
-const reaskTemplate = t('notice.agentRewindReask')
-check('the delegated prompt names the anchor checkpoint and the rewritten text',
-  reaskTemplate.includes('{checkpointId}') && reaskTemplate.includes('{turn}') && reaskTemplate.includes('{prompt}')
-  && fill(reaskPrompt, { checkpointId: 'cp-anchor', turn: 9, prompt: '改写的提问' }).includes('cp-anchor')
-  && fill(reaskPrompt, { checkpointId: 'cp-anchor', turn: 9, prompt: '改写的提问' }).includes('改写的提问')
-  && fill(moduleExports.__internals.agentRewindPrompt(t, { checkpointId: 'cp-anchor' }),
-    { checkpointId: 'cp-anchor' }).includes('cp-anchor'),
-  reaskPrompt.slice(0, 120))
-check('the prompt is an editable field', reaskDetails.includes('<textarea')
-  && reaskDetails.includes(t('detail.promptHint')), reaskDetails.slice(0, 0) || '')
-check('the editable prompt shows the turn prompt', reaskDetails.includes('原始提问'))
-check('the re-ask control contains no emoji', !EMOJI.test(reaskDetails))
-const disabled = (details.match(/disabled=""/g) ?? []).length
-check('actions that cannot apply are disabled', disabled >= 2, String(disabled))
-check('the details pane contains no emoji', !EMOJI.test(details))
-
-const safetyDetails = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.DetailsPane, {
-  checkpoint: checkpoints[3], session: sessions[0], workspace: 'C:/ws', t, onAction: () => {}, busy: false, plan: undefined,
-}))
-check('a safety backup offers only the restore action', safetyDetails.includes(t('action.restoreSafety'))
-  && !safetyDetails.includes(t('action.fork')))
-
-const dialog = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.ConfirmDialog, {
-  request: { conversation: 'inplace', workspace: 'restore', checkpoint: checkpoints[1] },
-  plan: { conversation: { ok: true, droppedTurns: [1, 2] }, workspace: { ok: true, summary: { restored: 1, recreated: 0, deleted: 2 } } },
-  t,
-  busy: false,
-  onCancel: () => {},
-  onConfirm: () => {},
-}))
-check('the confirmation dialog explains both effects',
-  dialog.includes(t('notice.inplaceExplain')) && dialog.includes(t('notice.workspaceExplain')))
-check('the confirmation dialog warns that the transcript keeps the abandoned text', dialog.includes(t('notice.abandonedWarn')))
-check('the confirmation dialog reports the dropped turn count', dialog.includes('2'))
-check('the dialog contains no emoji', !EMOJI.test(dialog))
-
-// A failure must be reported inside the dialog, next to the button that caused
-// it, and the confirm button must show that it is working.
-const busyDialog = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.ConfirmDialog, {
+check('no internal instruction is ever put in the composer',
+  !shellSource.includes('请用 rewind 工具') && !shellSource.includes('请先调用 rewind 工具')
+  && !shellSource.includes('agentRewindPrompt')
+  && shellSource.includes('actions.setDraft(options.prompt)'),
+  'the composer only ever receives the prompt the user wrote')
+// A failure inside the dialog: it must stay open, right where the click happened.
+const runningDialog = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.ConfirmDialog, {
   request: { conversation: 'inplace', workspace: 'none', checkpoint: checkpoints[1] },
   plan: undefined,
   t,
   busy: true,
+  error: undefined,
+  queued: false,
+  onCancel: () => {},
+  onConfirm: () => {},
+}))
+const busyDialog = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.ConfirmDialog, {
+  request: { conversation: 'inplace', workspace: 'none', checkpoint: checkpoints[1] },
+  plan: undefined,
+  t,
+  busy: false,
   error: '代理正在执行工具调用，请等这一轮结束后再回退',
+  queued: false,
   onCancel: () => {},
   onConfirm: () => {},
 }))
 check('a dialog failure is shown where the click happened',
   busyDialog.includes('代理正在执行工具调用') && busyDialog.includes('data-kind="error"'))
 check('the confirm button reports that it is running',
-  busyDialog.includes(t('action.running')) && busyDialog.includes('rw-spin'))
+  runningDialog.includes(t('action.running')) && runningDialog.includes('rw-spin'))
 const queuedDialog = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.ConfirmDialog, {
   request: { conversation: 'inplace', workspace: 'none', checkpoint: checkpoints[1] },
   plan: undefined,

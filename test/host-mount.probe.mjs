@@ -308,6 +308,28 @@ check('reads are not recorded as state changes',
   JSON.stringify(entries.map((entry) => entry.method)))
 check('status reports the calling browser build',
   logged?.value?.client?.build === 'build-from-test', JSON.stringify(logged?.value?.client))
+// The panel's idle rollback is scheduled over the wire, so nothing internal has to
+// be typed into the conversation.
+const scheduledBad = await telemetryCall({
+  method: 'scheduleRewind',
+  params: { sessionId: 'session-mount-1', checkpointId: 'cp-does-not-exist' },
+  client: 'build-from-test',
+})
+check('an unknown checkpoint cannot be scheduled', scheduledBad?.ok === false
+  && scheduledBad.error.code === 'unknown-checkpoint', JSON.stringify(scheduledBad))
+const scheduledReal = await telemetryCall({
+  method: 'scheduleRewind',
+  params: { sessionId: 'session-mount-1', checkpointId: snapshot.body.value.checkpoint.id },
+  client: 'build-from-test',
+})
+check('a real checkpoint can be scheduled for the next turn',
+  scheduledReal?.ok === true && scheduledReal.value.scheduled === true,
+  JSON.stringify(scheduledReal))
+const scheduledStatus = await telemetryCall({ method: 'status', params: {}, client: 'build-from-test' })
+check('the scheduled call is recorded as a state change',
+  (scheduledStatus?.value?.rpcLog ?? []).some((entry) => entry.method === 'scheduleRewind'
+    && entry.client === 'build-from-test'),
+  JSON.stringify((scheduledStatus?.value?.rpcLog ?? []).map((entry) => entry.method)))
 await new Promise((resolve) => telemetryServer.close(resolve))
 
 await fs.rm(sandbox, { recursive: true, force: true })
