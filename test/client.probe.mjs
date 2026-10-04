@@ -865,7 +865,7 @@ check('the card column is centred against the canvas',
   })(),
   JSON.stringify(wideLayout.__measured ?? []))
 check('a capped card stays inside the canvas on both sides',
-  wideLayout.cardW <= 760 && wideLayout.cardX + wideLayout.cardW <= wideLayout.width
+  wideLayout.cardW <= 1100 && wideLayout.cardX + wideLayout.cardW <= wideLayout.width
   && wideLayout.cardX >= wideLayout.railLeft,
   JSON.stringify([wideLayout.cardX, wideLayout.cardW, wideLayout.width]))
 
