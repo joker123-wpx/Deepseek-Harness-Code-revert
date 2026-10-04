@@ -652,6 +652,35 @@ check('a running action disables the confirm button but still offers a way out',
     React.createElement(moduleExports.ConfirmDialog, { ...dialogProps, busy: true, error: undefined, queued: false }),
   ).includes('disabled=""'))
 
+// ── a block header is a control, not a checkpoint ─────────────────────────
+// Clicking the folded block used to open the details pane for the header itself,
+// which is not a checkpoint: it must fold/unfold and never be selectable.
+const selectedCheckpointOf = moduleExports.__internals.selectedCheckpointOf
+const headerIds = collapsedGraph.visible.filter((row) => row.__group === true).map((row) => row.id)
+check('a block header never resolves to a selected checkpoint',
+  headerIds.length > 0 && headerIds.every((id) => selectedCheckpointOf(collapsedGraph.visible, id) === undefined),
+  JSON.stringify(headerIds))
+check('a real row still resolves, and so does an empty selection',
+  selectedCheckpointOf(collapsedGraph.visible, 'g0')?.id === 'g0'
+  && selectedCheckpointOf(collapsedGraph.visible, undefined) === undefined
+  && selectedCheckpointOf(collapsedGraph.visible, 'nope') === undefined)
+const headerMarkup = (() => {
+  const markup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
+    layout: collapsedGraph.layout,
+    selectedId: headerIds[0],
+    currentSessionId: 's1',
+    onSelect: () => {},
+    onToggleGroup: () => {},
+    t,
+  }))
+  return markup
+})()
+check('a block header is drawn as a control with its range, not as a selected row',
+  headerMarkup.includes('rw-groupbtn')
+  && headerMarkup.includes(t('panel.groupRow', { count: 10, from: '1', to: '10' }).slice(0, 6))
+  && !/rw-node[^"]*"[^>]*aria-pressed="true"/.test(headerMarkup.split('rw-groupbtn')[0] ?? ''),
+  headerMarkup.slice(0, 0) + `controls=${(headerMarkup.match(/rw-groupbtn/g) ?? []).length}`)
+
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
 }))
