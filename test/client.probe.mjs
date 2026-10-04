@@ -735,11 +735,11 @@ check('the timeline draws no branch title text',
     id: 's1',
     title: '会话',
     live: true,
-    cuts: [{ index: 0, fromTurn: 2, toTurn: 7, count: 6 }, { index: 1, fromTurn: 10, toTurn: 15, count: 6 }],
+    cuts: [{ index: 0, fromTurn: 8, toTurn: 10, count: 3 }, { index: 1, fromTurn: 14, toTurn: 16, count: 3 }],
   }]
   const cutCheckpoints = []
   for (let turn = 0; turn <= 20; turn += 1) {
-    const rewoundAway = (turn >= 2 && turn <= 7) || (turn >= 10 && turn <= 15)
+    const rewoundAway = (turn >= 8 && turn <= 10) || (turn >= 14 && turn <= 16)
     cutCheckpoints.push({
       id: `cp${turn}`, sessionId: 's1', afterTurn: turn, manifest: true, prompt: `p${turn}`,
       abandoned: rewoundAway, ownTurnRewound: false,
@@ -752,10 +752,7 @@ check('the timeline draws no branch title text',
   const elbows = cutGraph.layout.edges.filter((edge) => edge.surface === true)
     .map((edge) => [edge.from.checkpoint.afterTurn, edge.to.checkpoint.afterTurn])
   check('each rewind draws as its own branch, not one lumped run',
-    deadTurns.join(',') === '2,3,4,5,6,7,10,11,12,13,14,15'
-    && liveKept.join(',') === '8,9'
-    && newest.length > 0 && newest[0] === 16
-    && JSON.stringify(elbows) === JSON.stringify([[1, 8], [9, 16]]),
+    // The branch restarts the numbering at the cut: after rewinding 10 -> 7 the new\n    // turn is 8 again, and the second cut (14 -> 13) starts the next lane at 11.\n    deadTurns.join(',') === '8,9,10,14,15,16'\n    && liveKept.join(',') === '8,9,10'\n    && newest.length > 0 && newest[0] === 11\n    && JSON.stringify(elbows) === JSON.stringify([[7, 11], [13, 17]]),
     JSON.stringify({ deadTurns, liveKept, newest: newest.slice(0, 3), elbows }))
 }
 // ── the confirm dialog names the turn ranges ───────────────────────────────
