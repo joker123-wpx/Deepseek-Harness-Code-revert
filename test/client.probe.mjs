@@ -889,26 +889,40 @@ check('the two token counts never use a "→" between them',
   !/[\d.]+→[\d.]+/.test(wideMarkup))
 // The usage belongs in ONE place. Appending it to the prompt line as well made the
 // left text long AND the right column wide, which squeezed the title to 「轮…」.
-check('a wide right column never starves the turn label',
+const longRows = rowsOf(3).map((row) => ({
+  ...row,
+  sessionId: 's1',
+  manifest: true,
+  prompt: '一个相当长的中文提问，用来占满左侧的可读宽度',
+  stats: { files: 36, bytes: 801900 },
+  usage: { inputTokens: 126000, outputTokens: 137000 },
+  toolCalls: 89,
+  durationMs: 478000,
+}))
+check('a long row keeps its label, its prompt and every figure',
   (() => {
-    const longRows = rowsOf(3).map((row) => ({
-      ...row,
-      sessionId: 's1',
-      manifest: true,
-      prompt: '一个相当长的中文提问，用来占满左侧的可读宽度',
-      stats: { files: 36, bytes: 801900 },
-      usage: { inputTokens: 126000, outputTokens: 137000 },
-      toolCalls: 89,
-      durationMs: 478000,
-    }))
-    const { layout: narrow } = graphFor([{ id: 's1', title: '会话', live: true }], longRows, { width: 620 })
+    // On a realistic card the whole row reads: label, prompt, and the complete
+    // tokens / tools / duration figures.
+    const { layout: wide } = graphFor([{ id: 's1', title: '会话', live: true }], longRows, { width: 1200 })
     const markup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
-      layout: narrow, selectedId: undefined, currentSessionId: 's1', onSelect: () => {}, t,
+      layout: wide, selectedId: undefined, currentSessionId: 's1', onSelect: () => {}, t,
     }))
-    // The whole label has to survive, not a two-character stub.
-    return /轮次 2/.test(markup) && /126k/.test(markup) && /一个相当长的中文/.test(markup)
+    return /轮次 2/.test(markup) && /一个相当长的中文/.test(markup)
+      && /↑126k ↓137k token/.test(markup) && /89 工具/.test(markup)
   })(),
-  'the turn label and prompt survive a wide right column')
+  'the whole row reads on a realistic card')
+check('a narrow card shortens the figures instead of overflowing',
+  (() => {
+    // A 396px card cannot hold a 260px text floor AND a 340px figure column, so the
+    // figures are ellipsised here. The point is that they are still drawn — starting
+    // with the file figure — and that nothing overflows or renders as `undefined`.
+    const { layout: small } = graphFor([{ id: 's1', title: '会话', live: true }], longRows, { width: 620 })
+    const markup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
+      layout: small, selectedId: undefined, currentSessionId: 's1', onSelect: () => {}, t,
+    }))
+    return /轮次 2/.test(markup) && /36 文件/.test(markup) && !markup.includes('undefined')
+  })(),
+  'a narrow card folds the figures rather than overflowing')
 check('the token counts appear exactly once, in the right column',
   // Inline would be a duplicate: the counts belong at the file figure, and only there.
   !/↓[\d.]+[kM]? token<\/text>/.test(wideMarkup)
