@@ -1034,6 +1034,30 @@ check('the cards keep their width however many branches there are',
   check('rows still on the surface stay live',
     dead.get(127) !== true && dead.get(129) !== true && dead.get(131) !== true, JSON.stringify([...dead]))
 }
+// ── the memory walks back over replacements too, not only over cut starts ───
+// Reported: "137's memory must start from 134, and 138's too". A re-ask of 135 writes
+// cut 135 and produces 136; a re-ask of 137 writes cut 137. 136 is a REPLACEMENT, so the
+// walk has to step over it as well as over 135 — otherwise it stops at 136.
+{
+  const cuts = [
+    { index: 0, fromTurn: 128, toTurn: 128, count: 1 },
+    { index: 1, fromTurn: 130, toTurn: 130, count: 1 },
+    { index: 2, fromTurn: 135, toTurn: 135, count: 1 },
+    { index: 3, fromTurn: 137, toTurn: 137, count: 1 },
+  ]
+  const rows = []
+  for (const turn of [127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138]) {
+    rows.push({ id: `cp${turn}`, sessionId: 's1', afterTurn: turn, manifest: true, prompt: `p${turn}` })
+  }
+  const memory = (turn) => moduleExports.__internals.reaskAnchorFor(rows, rows.find((r) => r.afterTurn === turn), cuts)?.afterTurn
+  check('re-asking 137 restores the tree from 134', memory(137) === 134, String(memory(137)))
+  check('re-asking 138 restores the tree from 134', memory(138) === 134, String(memory(138)))
+  check('re-asking 136 also restores the tree from 134', memory(136) === 134, String(memory(136)))
+  check('re-asking 135 restores the tree from 134', memory(135) === 134, String(memory(135)))
+  // A longer connected lineage stays pinned to its very first target.
+  check('re-asking 129 still restores 127, past both of its own cuts',
+    memory(129) === 127 && memory(128) === 127, JSON.stringify([memory(128), memory(129)]))
+}
 // ── the confirm dialog names the turn ranges ───────────────────────────────
 // Asked for: "the prompt when rolling back is unclear — it keeps asking me about
 // earlier information". It must say which turns are kept and which are removed.
