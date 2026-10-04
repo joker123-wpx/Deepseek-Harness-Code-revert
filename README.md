@@ -211,7 +211,7 @@ lib/workspace.js       工作区引擎：扫描、增量哈希、diff、restore
 lib/conversation.js    会话侧：turn 分析、surface 替换回退
 lib/rpc.js             HTTP 传输：单一 RPC 路由 + loopback 防护
 lib/client.js          浏览器半：三个 slot、SVG 树图、详情面板、确认框
-test/                  离线测试套件（402 项断言）
+test/                  离线测试套件（406 项断言）
 ```
 
 ```powershell
@@ -223,10 +223,10 @@ node test/run.mjs
 | 探针 | 断言数 | 覆盖 |
 | --- | --- | --- |
 | `workspace.probe.mjs` | 24 | 快照 / 增量哈希复用 / diff / 干跑 / 回滚 / 幂等 / 二进制 / 去重 / 超限 / 符号链接 |
-| `engine.probe.mjs` | 83 | 检查点、回退预览、surface 回退、工作区回滚、安全备份、历史回填、回填升级、分叉分支、**多工作区覆盖**、**压缩归因**、无会话 id 自动挑选、GC |
+| `engine.probe.mjs` | 88 | 检查点、回退预览、surface 回退、工作区回滚、安全备份、历史回填、回填升级、分叉分支、**多工作区覆盖**、**压缩归因**、无会话 id 自动挑选、GC |
 | `session-rewind.probe.mjs` | 25 | 对真实 `dsh-session` 的 surface 替换、独立 `foldSurface` 复核、**以及回退后日志仍能通过重放校验加载** |
 | `version-compat.probe.mjs` | 38 | 两代 `dsh-session` API 方言（日志读取、区间字段、替代节点类型、fork 前缀、方言误判的兜底重试、不可读对象的可诊断报错） |
-| `client.probe.mjs` | 144 | 模块包装契约、require 表、树布局数学（行=轮次/列=分支/分叉锚点）、真实 `react-dom/server` 渲染、动作门控、**全量 emoji 扫描** |
+| `client.probe.mjs` | 148 | 模块包装契约、require 表、树布局数学（行=轮次/列=分支/分叉锚点）、真实 `react-dom/server` 渲染、动作门控、**全量 emoji 扫描** |
 | `host-mount.probe.mjs` | 45 | 插件挂载清单、真实 HTTP 往返、RPC 契约（405/415/403、确认门）、模型工具调用、turn 边界自动快照 |
 | `running-session.probe.mjs` | 17 | 用**应用真正加载的 `app.asar` 内那份 `dsh-session`** 跑通全流程，含重放加载 |
 

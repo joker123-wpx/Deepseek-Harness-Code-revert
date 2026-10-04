@@ -593,6 +593,44 @@ check('the dialog is positioned above its backdrop',
 check('the drawer is positioned too, so its backdrop cannot cover it',
   /\.rw-drawer\{position:(relative|absolute|fixed)/.test(sheet),
   /\.rw-drawer\{[^}]*\}/.exec(sheet)?.[0]?.slice(0, 60))
+// The panel used to hug the window's right edge (96vw wide, rounded on one corner
+// only), which read as "very long, with uneven margins".
+check('the panel has equal left and right margins',
+  /\.rw-overlay-layer\{[^}]*padding:var\(--rw-titlebar-height\) 14px 14px 14px/.test(sheet),
+  /\.rw-overlay-layer\{[^}]*\}/.exec(sheet)?.[0]?.slice(0, 110))
+check('the panel is a rounded card, not a flush edge',
+  /\.rw-drawer\{[^}]*width:min\(860px,100%\)/.test(sheet)
+  && /\.rw-drawer\{[^}]*border:1px solid/.test(sheet)
+  && /\.rw-drawer\{[^}]*border-radius:12px/.test(sheet)
+  && !/96vw/.test(sheet),
+  /\.rw-drawer\{[^}]*\}/.exec(sheet)?.[0]?.slice(0, 120))
+
+// A row that was already replaced cannot be rewound in place (no turn on the
+// surface to cut at). It stays forkable, and the panel has to say so rather than
+// leave a dead button with no way forward.
+const replacedRow = {
+  id: 'cp-replaced', afterTurn: 3, kind: 'auto', manifest: true, prompt: '被替换的提问',
+  alreadyRewound: true, reachable: false, canFork: true, hasNextTurn: true, nextTurnExists: true,
+  canRestoreWorkspace: true,
+}
+const replacedMarkup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.DetailsPane, {
+  checkpoint: replacedRow,
+  t,
+  onAction: () => {},
+  busy: false,
+  plan: undefined,
+  onClose: () => {},
+  canReask: false,
+  inplace: false,
+  inplaceReason: '就地遗忘在当前版本不可用',
+}))
+check('a replaced row explains itself and points at the branch rewind',
+  replacedMarkup.includes(t('notice.unreachable')) && replacedMarkup.includes(t('notice.branchHint')),
+  replacedMarkup.includes(t('notice.branchHint')) ? 'hint present' : replacedMarkup.slice(0, 160))
+check('the branch rewind stays enabled on a replaced row',
+  replacedMarkup.includes(t('action.fork'))
+  && !new RegExp(`disabled=""[^>]*>${t('action.fork')}<`).test(replacedMarkup),
+  replacedMarkup.slice(Math.max(0, replacedMarkup.indexOf(t('action.fork')) - 90), replacedMarkup.indexOf(t('action.fork')) + 16))
 
 const dialogProps = {
   request: { checkpoint: { id: 'cp1', afterTurn: 3 }, conversation: 'inplace', workspace: 'none' },

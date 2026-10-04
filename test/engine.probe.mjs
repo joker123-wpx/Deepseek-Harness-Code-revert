@@ -237,6 +237,9 @@ check('the tree now marks the rewound turn as an abandoned branch',
   overviewAfter.checkpoints.some((checkpoint) => checkpoint.abandoned === true),
   JSON.stringify(overviewAfter.checkpoints.map((checkpoint) => [checkpoint.afterTurn, checkpoint.abandoned, checkpoint.alreadyRewound])))
 check('a second rewind of the same turn is refused', cp1After.reachable === false && cp1After.alreadyRewound === true)
+check('a rewound row stays forkable, which is the way back to it',
+  cp1After.canFork === true && cp1After.forkAtSeq !== undefined,
+  JSON.stringify({ canFork: cp1After.canFork, forkAtSeq: cp1After.forkAtSeq, reachable: cp1After.reachable }))
 let refused = false
 try {
   await engine.apply(cp1.id, { conversation: 'inplace', workspace: 'none' })
