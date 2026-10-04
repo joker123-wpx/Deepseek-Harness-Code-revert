@@ -196,7 +196,35 @@ await write('src/extra.js', 'export const extra = 2\n')
 await fs.rm(join(root, 'README.md'))
 
 // ── conversation rewind (surface replacement) ───────────────────────────────
+// The append is a `system/message`, which this session format only loads from
+// inside an OPEN turn and step. Between turns the write is refused — that refusal
+// is the fix for a session that became permanently unloadable in the field — and
+// the very same rewind still applies while a turn is open, which is the case the
+// agent's own `rewind` tool runs in.
 const before = session.deriveMessages().length
+const eventsBefore = session.events.length
+const noOpenTurn = await engine.overview(sessionId)
+check('the overview reports that an in-place rewind is not writable between turns',
+  noOpenTurn.capabilities?.inplaceRewind === false
+  && String(noOpenTurn.capabilities?.inplaceReason ?? '').includes('turn/step'),
+  JSON.stringify(noOpenTurn.capabilities))
+let unsafe
+try {
+  await engine.apply(cp1.id, { conversation: 'inplace', workspace: 'none' })
+} catch (error) {
+  unsafe = error
+}
+check('an in-place rewind between turns is refused instead of corrupting the log',
+  unsafe?.code === 'unsafe-append' && session.events.length === eventsBefore,
+  JSON.stringify({ code: unsafe?.code, appended: session.events.length - eventsBefore }))
+check('the refusal names the rule it would break',
+  String(unsafe?.message ?? '').includes('turn/step'), String(unsafe?.message))
+
+session.append('turn/start', { turn: 4 })
+session.append('step/start', { turn: 4, step: 1 })
+const writable = await engine.overview(sessionId)
+check('the overview flips to writable while a turn and step are open',
+  writable.capabilities?.inplaceRewind === true, JSON.stringify(writable.capabilities))
 const inplace = await engine.apply(cp1.id, { conversation: 'inplace', workspace: 'none' })
 const after = session.deriveMessages().length
 check('in-place rewind dropped the turns after the checkpoint', after < before, `${before} -> ${after}`)

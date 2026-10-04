@@ -178,3 +178,36 @@ window.__ModuleLoader__.load({ id: 'dsh-plugin-rewind', factory: (require) => { 
 1. **行按绝对轮次号定位**：`y = 顶部 + 轮次 × 行高`。隐藏较早的行后，它们占的高度留成空白，看起来"上半部分被清空"，而且同一轮的两个检查点（自动 + 手动，或 `轮次+0.5` 的备份）会**重叠在同一行**。现在行是**连续槽位**（按轮次顺序 0,1,2,…），既不重叠也不留白。第一行（起始状态）**永不折叠**：它是整条时间线的锚点。
 2. **滚动条宽度震荡**：折叠改变内容高度 → 出现/消失纵向滚动条 → 容器 `clientWidth` 变化 → `ResizeObserver` 触发 → 重新布局 → 又可能改变高度。现在 `.rw-scroll` 用 `scrollbar-gutter: stable` + `overflow-y: scroll` 常驻滚动条槽，宽度测量再加 8px 死区，震荡消失。
 3. **轮询重建整棵树**：概览每 2s 轮询，旧实现每次都 `setState({loading:true, …})` 再换成新对象，于是 `layout`（memo 依赖 payload）重算、整棵 SVG 重绘——每 2 秒一次全量重绘，点击时自然觉得卡。现在 `overviewSignature()` 给 payload 做指纹（检查点 id/轮次/各标志位、会话标题、排队状态、构建号），指纹相同就**保留上一个对象**（React 直接跳过重绘），后台轮询也不再翻转 loading 转圈。折叠本身是纯客户端状态，不触发任何 RPC。
+
+### 事故记录：一个把会话写坏的 surface 替换（2026-10-04）
+
+**现象**：重启客户端后某个会话加载失败：
+
+```
+stored session "session-…" is corrupt: SessionFormatError:
+system/message does not match an open turn and step
+```
+
+**根因**：就地回退的载体是一个空的 `system/message` + `surfaceOp:{op:'replace'}`。
+在磁盘格式里 **`system/message` 是 turn/step 作用域的**：加载器（`Relationships.requireStep`）
+要求 `data.turn`/`data.step` 与**当前打开的** turn/step 一致，否则**整份日志拒绝加载**。
+插件在 `turn/end` 之后（没有任何打开轮次时）追加了这个事件，而进程内的
+`session.append` 校验远松于磁盘加载器，于是写进去时"成功"、重启时"损坏"。
+
+**修复（三层）**：
+
+1. **写前复演**（`lib/logcheck.js`）：按加载器的规则复演日志状态，再判断候选事件能否被
+   重新加载；不能则抛 `unsafe-append`，**一个字节都不写**。`lib/conversation.js` 的
+   `applyRewind` 对每个方言候选都做这一步；`lib/engine.js` 在更早的位置就用同一条件拦住
+   用户发起的就地回退，并把 `capabilities.inplaceRewind` 报给面板，面板直接置灰 + 给出原因。
+2. **合法时机保留功能**：标记必须命名**打开的** turn/step，所以代理在自己那一轮里调用
+   `rewind` 工具时写入是**合法的**——`surfaceIntents` 现在优先使用当前打开的 turn/step，
+   这条路径（以及新分支回退、工作区回滚）继续可用。
+3. **事后修复工具**（`tools/repair-session-log.mjs`）：解出全部 zstd 帧 → 逐条复演规则 →
+   丢弃带 `rewind-` 标记且落在轮次外的坏事件 → 重新压成单帧写回，**备份写在日志旁**
+   （`session.v4.jsonl.zstd.pre-repair-<ts>`）。实机扫描 15 个会话，只命中 1 个受损会话，
+   修复后 193 个事件、seq 0..192 连续、可正常加载。
+
+**回归测试**：`test/logcheck.probe.mjs`（16 条）直接用事故里的那个事件做输入，断言
+「写前拒绝 / 检出 / 修复后干净」；`engine`、`session-rewind`、`version-compat`、
+`running-session` 四个 probe 都补了「轮次外拒绝、轮次内可写」的对照断言。

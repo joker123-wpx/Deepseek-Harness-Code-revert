@@ -97,6 +97,20 @@ check('messages derive on the running copy', analysis.messageCount === 6, String
 const before = session.deriveMessages().length
 const plan = planRewind(session, lastUserSeq)
 check('the rewind plan is applicable on the running copy', plan.ok === true, JSON.stringify(plan.reason ?? ''))
+// Between turns the marker cannot be written safely: the running loader only
+// accepts a surface replacement inside an OPEN turn and step. Refusing is the fix
+// for the session that became unloadable, so that is what is checked here; the
+// write itself is then exercised with a turn open, as the agent's tool has.
+let refusedUnsafe
+try {
+  applyRewind(session, plan)
+} catch (error) {
+  refusedUnsafe = error
+}
+check('the running copy refuses a rewind marker written between turns',
+  refusedUnsafe?.code === 'unsafe-append', String(refusedUnsafe?.code))
+session.append('turn/start', { turn: 4 })
+session.append('step/start', { turn: 4, step: 1 })
 const marker = applyRewind(session, plan)
 const after = session.deriveMessages().length
 check('the rewind removed the abandoned turn on the running copy', after === before - 2, `${before} -> ${after}`)

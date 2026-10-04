@@ -148,6 +148,19 @@ for (const dialect of ['0.1.x', '0.2.x']) {
       : (op.start === plan.start && op.end === plan.end && op.startSeq === undefined && Object.keys(op).length === 3),
     JSON.stringify(op))
 
+  // The marker is only loadable from inside an open turn and step, so the same
+  // rule holds in both dialects: refused between turns, written inside one.
+  let refusedUnsafe
+  try {
+    applyRewind(session, plan)
+  } catch (error) {
+    refusedUnsafe = error
+  }
+  check(`${dialect}: a rewind between turns is refused as unloadable`,
+    refusedUnsafe?.code === 'unsafe-append', String(refusedUnsafe?.code))
+  session.append('turn/start', { turn: 4 })
+  session.append('step/start', { turn: 4, step: 1 })
+
   const marker = applyRewind(session, plan)
   check(`${dialect}: the marker uses this dialect's event type`,
     dialect === '0.2.x' ? marker.type === 'system/message' : marker.type === 'assistant/message',
@@ -181,6 +194,9 @@ console.log('\n--- the dialect fallback recovers a mis-detected session ---')
   const before = session.appended.length
   const analysis = analyzeSession(session)
   const plan = planRewind(session, analysis.turns[2].userSeq)
+  // The marker needs an open turn/step to be loadable, as in the agent's own turn.
+  session.append('turn/start', { turn: 4 })
+  session.append('step/start', { turn: 4, step: 1 })
   let recovered = true
   let marker
   try {
@@ -191,7 +207,7 @@ console.log('\n--- the dialect fallback recovers a mis-detected session ---')
   }
   check('a mis-detected dialect still rewinds through the fallback', recovered === true)
   check('the fallback appended exactly one accepted replacement',
-    session.appended.length - before === 1 && marker?.surfaceOp?.startSeq !== undefined,
+    session.appended.length - before === 3 && marker?.surfaceOp?.startSeq !== undefined,
     JSON.stringify(marker?.surfaceOp))
   check('the fallback marker still projects to nothing',
     Array.isArray(marker?.data?.message?.content) && marker.data.message.content.length === 0)
@@ -239,6 +255,9 @@ try {
   check('the real module is readable through the same helpers', realAnalysis.turns.length === 1 && realAnalysis.turns[0].prompt === '真实会话')
   check('the real module reports the 0.1.x flavor', typeof real.snapshotEvents !== 'function' && Array.isArray(real.events))
   const realPlan = planRewind(real, user.seq)
+  // The marker needs an open turn/step to be loadable, as in the agent's own turn.
+  real.append('turn/start', { turn: 4 })
+  real.append('step/start', { turn: 4, step: 1 })
   const realMarker = applyRewind(real, realPlan)
   check('a real 0.1.x rewind still appends the marker', realMarker.data.message.content.length === 0)
   check('the real session surface shrank', real.surface.nodes.length === 1, JSON.stringify([...real.surface.nodes]))

@@ -98,10 +98,33 @@ check('plan is applicable', plan.ok === true, JSON.stringify(plan.reason ?? ''))
 check('plan shadows exactly the target turn', plan.shadowed.length === 2, JSON.stringify(plan.shadowed))
 check('plan reports the dropped turn', plan.droppedTurns.length === 1 && plan.droppedTurns[0].turn === 3)
 
+// ── the write is refused between turns, and allowed inside one ──────────────
+// The loader only accepts a surface replacement that names an OPEN turn and step.
+// A panel-initiated rewind has none open, so writing there is what made a session
+// unloadable in the field; the same write inside the agent's own turn is fine.
 const before = session.deriveMessages().length
+const eventsBefore = session.events.length
+let refusedUnsafe
+try {
+  applyRewind(session, plan)
+} catch (error) {
+  refusedUnsafe = error
+}
+check('a rewind between turns is refused as unloadable',
+  refusedUnsafe?.code === 'unsafe-append' && session.events.length === eventsBefore,
+  JSON.stringify({ code: refusedUnsafe?.code, appended: session.events.length - eventsBefore }))
+check('the refusal does not touch the surface',
+  session.surface.nodes.length === session.events.length || session.deriveMessages().length === before,
+  `${session.deriveMessages().length} vs ${before}`)
+
+// The agent's own rewind tool runs inside its turn: open one and the write lands.
+session.append('turn/start', { turn: 4 })
+session.append('step/start', { turn: 4, step: 1 })
 const marker = applyRewind(session, plan)
 const after = session.deriveMessages().length
 console.log('marker event    :', JSON.stringify(marker.data).slice(0, 220))
+check('the marker names the open turn and step', marker.data.turn === 4 && marker.data.step === 1,
+  `${marker.data.turn}/${marker.data.step}`)
 check('marker carries an identified message', typeof marker.data.message.id === 'string' && marker.data.message.id !== '')
 check('marker carries a model source', marker.data.message.source.kind === 'model'
   && typeof marker.data.message.source.provider === 'string'

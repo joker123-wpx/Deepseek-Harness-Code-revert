@@ -200,6 +200,10 @@ const details = ReactDOMServer.renderToStaticMarkup(React.createElement(client.D
   plan: undefined,
   // The panel gates re-asking on the row ABOVE the turn, so ask the real helper.
   canReask: client.__internals.reaskAnchorFor(overview?.checkpoints ?? [], selectedCheckpoint) !== undefined,
+  // This release refuses to rewrite a session log in place (lib/logcheck.js), so
+  // the preview shows the disabled control and its reason, as the panel does.
+  inplace: false,
+  inplaceReason: '就地遗忘在当前 DSH 版本无法安全写入会话日志（回退标记必须落在一段打开的 turn/step 里），请改用「新分支回退」。',
   onClose: () => {},
 }))
 

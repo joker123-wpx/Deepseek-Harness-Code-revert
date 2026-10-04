@@ -18,6 +18,7 @@ const probes = [
   ['workspace', 'workspace.probe.mjs'],
   ['checkpoints + rollback engine', 'engine.probe.mjs'],
   ['conversation rewind + replay', 'session-rewind.probe.mjs'],
+  ['session-log format guard + repair', 'logcheck.probe.mjs'],
   ['dsh-session version compatibility', 'version-compat.probe.mjs'],
   ['browser half + tree rendering', 'client.probe.mjs'],
   ['host mount + RPC round trip', 'host-mount.probe.mjs'],
