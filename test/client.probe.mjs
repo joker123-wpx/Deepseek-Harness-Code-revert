@@ -738,6 +738,16 @@ check('clicking the chip reveals the whole title without spilling out of the box
     return popover !== '' && popover.includes('工作区回滚') && !popover.includes('…')
   })(),
   'the revealed title carries the whole text')
+// The visible chip is the title alone; the "current branch" badge lives in the
+// accessible name and the tooltip, where it costs no space and clutters nothing.
+check('the chip shows the title only, with the current-branch badge kept for a11y',
+  (() => {
+    const label = /class="rw-chip"[^>]*aria-label="([^"]*)"/.exec(chipClosed)?.[1] ?? ''
+    const visible = [...chipClosed.matchAll(/<text[^>]*>([^<]*)<\/text>/g)]
+      .map((match) => match[1]).join(' ')
+    return label.includes('当前分支') && !visible.includes('当前分支')
+  })(),
+  'badge in a11y only')
 // ── each rewind is its own branch ──────────────────────────────────────────
 // Reported: after a first rewind (2–7), continuing to 14 and rewinding to 10 drew
 // the whole thing as one "2–15 new branch". The shape must be
