@@ -763,6 +763,61 @@ check('every visible row of the first session stays on lane 0',
 check('both sessions keep their own rail',
   railGraph.layout.lanes.length === 2, String(railGraph.layout.lanes.length))
 
+// ── every row reports what its turn cost ──────────────────────────────────
+// Tokens in → out, tool calls and duration ride the card; the details pane breaks
+// the numbers down.
+const usageRows = groupRows(rowsOf(4).map((row, index) => ({
+  ...row,
+  sessionId: 's1',
+  usage: index === 0 ? undefined : { inputTokens: 8075, outputTokens: 2324, totalTokens: 10399 },
+  durationMs: index === 0 ? undefined : 31284,
+  toolCalls: index === 0 ? undefined : 3,
+  steps: 2,
+})), new Set(), 10)
+const usageGraph = graphFor([{ id: 's1', title: '会话', live: true }], usageRows.visible, { width: 900 })
+const usageMarkup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
+  layout: usageGraph.layout,
+  selectedId: undefined,
+  currentSessionId: 's1',
+  onSelect: () => {},
+  onToggleGroup: () => {},
+  t,
+}))
+check('a row card summarises its turn: tokens, tools, duration',
+  usageMarkup.includes('8.1k→2.3k') && usageMarkup.includes('3 ') && usageMarkup.includes('31s'),
+  usageMarkup.slice(usageMarkup.indexOf('8.1k') - 40, usageMarkup.indexOf('8.1k') + 40))
+check('a row with no usage data shows none of it',
+  (() => {
+    const bare = graphFor([{ id: 's1', title: '会话', live: true }], rowsOf(3).map((row) => ({
+      ...row, sessionId: 's1',
+    })), { width: 900 })
+    const bareMarkup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
+      layout: bare.layout, selectedId: undefined, currentSessionId: 's1', onSelect: () => {}, t,
+    }))
+    return !bareMarkup.includes('8.1k') && !bareMarkup.includes(t('usage.tokens'))
+  })(),
+  'no summary without usage data')
+const usageDetails = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.DetailsPane, {
+  checkpoint: {
+    ...usageRows.visible[1],
+    usage: { inputTokens: 8075, outputTokens: 2324, cacheReadTokens: 120, cacheWriteTokens: 8, totalTokens: 10399 },
+    durationMs: 31284,
+    toolCalls: 3,
+    steps: 2,
+    model: 'deepseek-flash',
+  },
+  t,
+  onAction: () => {},
+  busy: false,
+  plan: undefined,
+  onClose: () => {},
+}))
+check('the details pane breaks the usage down',
+  usageDetails.includes(t('usage.title')) && usageDetails.includes('8075') && usageDetails.includes('2324')
+  && usageDetails.includes('10399') && usageDetails.includes(t('usage.cacheRead'))
+  && usageDetails.includes('deepseek-flash') && usageDetails.includes('31s'),
+  usageDetails.slice(usageDetails.indexOf(t('usage.title')), usageDetails.indexOf(t('usage.title')) + 160))
+
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
 }))

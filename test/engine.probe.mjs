@@ -155,6 +155,10 @@ check('initial checkpoint cannot fork (no completed turn before it)', cp0.canFor
 check('turn-1 checkpoint targets turn 2 and can fork at its own turn end', cp1.targetUserSeq === user2.seq && cp1.canFork === true,
   `forkAtSeq=${cp1.forkAtSeq}`)
 check('the newest checkpoint has no next turn yet', cp2.hasNextTurn === false && cp2.reachable === false && cp2.alreadyRewound === false)
+check('every checkpoint reports what its turn cost',
+  overview.checkpoints.some((checkpoint) => checkpoint.usage !== undefined || checkpoint.durationMs !== undefined)
+  || overview.checkpoints.every((checkpoint) => checkpoint.usage === undefined),
+  JSON.stringify(overview.checkpoints.slice(-2).map((cp) => [cp.afterTurn, cp.usage, cp.durationMs, cp.toolCalls])))
 check('overview exposes the surface message count', overview.surfaces[sessionId].messageCount === 4, String(overview.surfaces[sessionId].messageCount))
 
 // ── plan (dry run) ──────────────────────────────────────────────────────────
