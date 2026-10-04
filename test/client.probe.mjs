@@ -739,7 +739,7 @@ check('the timeline draws no branch title text',
   }]
   const cutCheckpoints = []
   for (let turn = 0; turn <= 20; turn += 1) {
-    const rewoundAway = (turn >= 1 && turn <= 6) || (turn >= 9 && turn <= 14)
+    const rewoundAway = (turn >= 2 && turn <= 7) || (turn >= 10 && turn <= 15)
     cutCheckpoints.push({
       id: `cp${turn}`, sessionId: 's1', afterTurn: turn, manifest: true, prompt: `p${turn}`,
       abandoned: rewoundAway, ownTurnRewound: false,
@@ -752,10 +752,10 @@ check('the timeline draws no branch title text',
   const elbows = cutGraph.layout.edges.filter((edge) => edge.surface === true)
     .map((edge) => [edge.from.checkpoint.afterTurn, edge.to.checkpoint.afterTurn])
   check('each rewind draws as its own branch, not one lumped run',
-    deadTurns.join(',') === '1,2,3,4,5,6,9,10,11,12,13,14'
-    && liveKept.join(',') === '7,8'
-    && newest.length > 0 && newest[0] === 15
-    && JSON.stringify(elbows) === JSON.stringify([[0, 7], [8, 15]]),
+    deadTurns.join(',') === '2,3,4,5,6,7,10,11,12,13,14,15'
+    && liveKept.join(',') === '8,9'
+    && newest.length > 0 && newest[0] === 16
+    && JSON.stringify(elbows) === JSON.stringify([[1, 8], [9, 16]]),
     JSON.stringify({ deadTurns, liveKept, newest: newest.slice(0, 3), elbows }))
 }
 // ── the confirm dialog names the turn ranges ───────────────────────────────
