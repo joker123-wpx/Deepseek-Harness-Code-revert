@@ -190,16 +190,15 @@ const treeElement = moduleExports.TreeGraph({
   t,
 })
 
-// ── the branch chip carries the full title as a tooltip ────────────────────
-const tips = []
-walk(treeElement, (element) => {
-  if (element.type === 'title') tips.push(element.props?.children)
-})
-check('the branch chip exposes the full branch title as a tooltip', tips.length >= 1 && typeof tips[0] === 'string',
-  JSON.stringify(tips.slice(0, 2)))
-check('a long branch title is ellipsised in the chip, not widened forever',
-  !tips[0].includes('…') || tips[0].length > 0,
-  JSON.stringify(tips[0]))
+// ── the timeline draws no branch titles ────────────────────────────────────
+// Asked for explicitly: two branches meant two long titles over the timeline, which
+// read as duplicated clutter. The rails and the accent dot carry the meaning now.
+check('no branch title is drawn over the timeline',
+  !tree.includes('rw-chip') && !treeElement.props.children?.some?.((child) => false),
+  'no chip elements')
+check('the empty graph still renders its own state, not a chip',
+  typeof moduleExports.__internals.graphFor === 'function',
+  'graphFor available')
 const groups = []
 walk(treeElement, (element) => {
   if (element.props?.className === 'rw-node') groups.push(element)
@@ -705,10 +704,10 @@ check('a folded row is a card with its range and the fold control, not a bare he
   && headerMarkup.includes('rw-card'),
   headerMarkup.slice(0, 0) + `controls=`)
 
-// ── the branch chip: truncated is fine, unreachable is not ─────────────────
-// Clicking a chip reveals the whole title, wrapped over the timeline. Both the
-// wrapping helper and the revealed markup are checked, because a "reveal" that
-// still spills out of its box is the same defect wearing a hat.
+// ── no branch titles are drawn at all ──────────────────────────────────────
+// Asked for explicitly: two branches meant two long titles over the timeline, which
+// read as duplicated clutter. A lane's identity is its rail, its dot and its colour;
+// nothing textual is painted over the rows.
 const chipGraph = graphFor(
   [{ id: 's1', title: '做一个deepseek harness插件，用户能够对话回退、工作区回滚，并有专门的可视化树图', live: true }],
   rowsOf(3).map((row) => ({ ...row, sessionId: 's1' })),
@@ -717,39 +716,15 @@ const chipGraph = graphFor(
 const chipClosed = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: chipGraph.layout, currentSessionId: 's1', onSelect: () => {}, t,
 }))
-check('the branch chip is a control, and its collapsed text is cleanly ellipsised',
-  /class="rw-chip"[^>]*role="button"/.test(chipClosed)
-  && chipClosed.includes('…')
-  && !chipClosed.includes('rw-chippop'))
-const wrapped = moduleExports.__internals.wrapText(
-  '做一个deepseek harness插件，用户能够对话回退、工作区回滚，并有专门的可视化树图', 300, 11, 8)
-check('a long title wraps into lines that fit the given width',
-  wrapped.length > 1 && wrapped.length <= 8
-  && wrapped.every((line) => moduleExports.__internals.measureText(line, 11) <= 300),
-  JSON.stringify(wrapped.map((line) => line.length)))
-const chipOpen = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
-  layout: chipGraph.layout, currentSessionId: 's1', onSelect: () => {}, t,
-  openChip: 's1', onToggleChip: () => {},
-}))
-check('clicking the chip reveals the whole title without spilling out of the box',
-  (() => {
-    // The collapsed chip is still on the page (and still ellipsised); it is the
-    // revealed card that has to carry the title in full.
-    const popover = chipOpen.slice(chipOpen.indexOf('rw-chippop'))
-    return popover !== '' && popover.includes('工作区回滚') && !popover.includes('…')
-  })(),
-  'the revealed title carries the whole text')
-// The chip is the branch's name alone: no "current branch" and no "after rewind"
-// text anywhere in it — not on the chip, not in its tooltip. The current lane is
-// stated structurally with `aria-current` instead.
-check('the chip shows the title only, with no badge in the visible text',
+check('the timeline draws no branch title text',
   (() => {
     const visible = [...chipClosed.matchAll(/<text[^>]*>([^<]*)<\/text>/g)]
       .map((match) => match[1]).join(' ')
-    return !visible.includes('当前分支') && !visible.includes('回退后新分支')
-      && chipClosed.includes('aria-current="true"')
+    return !chipClosed.includes('rw-chip') && !chipClosed.includes('rw-chippop')
+      && !visible.includes('当前分支') && !visible.includes('回退后新分支')
+      && !visible.includes('做一个deepseek')
   })(),
-  'title only, current stated structurally')
+  'no branch title painted over the rows')
 // ── each rewind is its own branch ──────────────────────────────────────────
 // Reported: after a first rewind (2–7), continuing to 14 and rewinding to 10 drew
 // the whole thing as one "2–15 new branch". The shape must be
