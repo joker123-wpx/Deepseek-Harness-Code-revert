@@ -1,0 +1,10 @@
+# Keep every text file LF in the repository, whatever the checkout's platform.
+# Without this, editing from a Windows shell can flip a file's endings and turn
+# the next diff into a whole-file rewrite.
+* text=auto eol=lf
+
+# Binary assets stay untouched.
+*.png binary
+*.jpg binary
+*.ico binary
+*.zst binary

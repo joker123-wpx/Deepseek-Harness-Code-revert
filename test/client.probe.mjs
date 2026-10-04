@@ -92,8 +92,24 @@ check('a fork opens a new column to the right', childLane > rootLane, `${rootLan
 const cp1Node = layout.nodes.find((node) => node.checkpoint.id === 'cp1')
 const cp2Node = layout.nodes.find((node) => node.checkpoint.id === 'cp2')
 check('rows follow the turn index', cp2Node.y > cp1Node.y && cp1Node.y > layout.nodes[0].y)
+check('rows are consecutive slots, one pitch apart',
+  layout.nodes.slice().sort((a, b) => a.row - b.row)
+    .every((node, index, list) => index === 0 || (node.row === list[index - 1].row + 1
+      && node.y - list[index - 1].y === 54)),
+  JSON.stringify(layout.nodes.slice().sort((a, b) => a.row - b.row).map((node) => [node.row, node.y])))
 const safetyNode = layout.nodes.find((node) => node.checkpoint.id === 'cp3')
-check('a safety backup sits between turns', safetyNode.y > cp2Node.y && safetyNode.y < cp2Node.y + 36)
+// Rows are unique slots in turn order, so a backup recorded at turn+0.5 lands
+// between its neighbours and two checkpoints never overlap on one row.
+check('a safety backup sits between turns',
+  safetyNode.row > cp2Node.row
+  && layout.nodes.filter((node) => node.turn > 2.5).every((node) => node.row > safetyNode.row)
+  && new Set(layout.nodes.map((node) => node.row)).size === layout.nodes.length,
+  JSON.stringify({
+    safety: [safetyNode.row, safetyNode.turn],
+    cp2: [cp2Node.row, cp2Node.turn],
+    uniqueRows: new Set(layout.nodes.map((node) => node.row)).size,
+    nodes: layout.nodes.length,
+  }))
 check('chain edges connect consecutive checkpoints', layout.edges.filter((edge) => edge.kind === 'chain' && edge.from.checkpoint.sessionId === 'session-root').length === 3)
 const forkEdge = layout.edges.find((edge) => edge.kind === 'fork')
 check('the fork edge is anchored at the checkpoint whose turn end matches the seed length',
@@ -290,21 +306,46 @@ check('an unreadable list leaves the session unresolved rather than wrong',
   readActiveSession({ get: () => ({ list: { getSnapshot: () => ({}) } }), effect: () => () => {} }).sessionId === undefined)
 
 // ── a long timeline folds, and folds back open ────────────────────────────
-const partitionRows = moduleExports.__internals.partitionRows
+const folderize = moduleExports.__internals.folderize
 const manyRows = Array.from({ length: 14 }, (_, index) => ({ id: `r${index}`, afterTurn: index }))
-const folded = partitionRows(manyRows, false, 10)
-check('a long timeline folds to its newest rows',
-  folded.visible.length === 10 && folded.hiddenCount === 4
-  && folded.visible[0].id === 'r4' && folded.visible[9].id === 'r13',
-  JSON.stringify({ visible: folded.visible.map((row) => row.id), hidden: folded.hiddenCount }))
-const unfolded = partitionRows(manyRows, true, 10)
-check('the folded rows come back on request',
-  unfolded.visible.length === 14 && unfolded.hiddenCount === 0)
+const folded = folderize(manyRows, false, 10)
+check('a long timeline folds its older rows into one inline summary',
+  folded.visible.length === 11 && folded.fold.count === 4
+  && folded.visible[0].__fold === true
+  && folded.visible[1].id === 'r4' && folded.visible[10].id === 'r13',
+  JSON.stringify({ visible: folded.visible.map((row) => row.id), fold: folded.fold }))
+check('the summary keeps the folded range and its place in the order',
+  folded.fold.turnFrom === 0 && folded.fold.turnTo === 3 && folded.fold.collapsed === true
+  && folded.visible[0].afterTurn === 0,
+  JSON.stringify(folded.fold))
+const unfolded = folderize(manyRows, true, 10)
+check('the folded rows come back in place on request',
+  unfolded.visible.length === 14 && unfolded.fold.collapsed === false
+  && unfolded.visible.every((row) => row.__fold !== true))
 check('a short timeline is never folded',
-  partitionRows(manyRows.slice(0, 10), false, 10).hiddenCount === 0
-  && partitionRows(manyRows.slice(0, 3), false, 10).visible.length === 3)
-check('the fold control says how many rows are hidden',
-  typeof t('panel.foldOlder') === 'string' && t('panel.foldOlder').includes('{count}'))
+  folderize(manyRows.slice(0, 10), false, 10).fold === undefined
+  && folderize(manyRows.slice(0, 3), false, 10).visible.length === 3)
+check('the fold copy names the range it hides',
+  typeof t('panel.foldRow') === 'string' && t('panel.foldRow').includes('{count}')
+  && t('panel.foldRow').includes('{from}') && t('panel.foldRow').includes('{to}'))
+
+// The layout must not leave blank space where a folded range used to be: rows are
+// consecutive slots, so the first visible row sits directly under the summary.
+const foldLayout = moduleExports.buildLayout(
+  [{ id: 's1', title: '会话', live: true }],
+  folded.visible.map((row) => ({ ...row, sessionId: 's1', manifest: true, prompt: '' })),
+  { width: 700 },
+)
+const foldRows = foldLayout.nodes.slice().sort((a, b) => a.row - b.row)
+check('the folded timeline is compact: one row pitch per visible row',
+  foldRows.every((node, index) => index === 0 || node.row === foldRows[index - 1].row + 1
+    && node.y - foldRows[index - 1].y === 54),
+  JSON.stringify(foldRows.map((node) => [node.row, node.y])))
+check('the fold summary is its own row slot', foldRows[0].fold === true)
+check('a collapsed fold asks for a + control, an expanded one for a -',
+  folded.fold.collapsed === true && unfolded.fold.collapsed === false)
+check('no blank space is left above the newest rows', foldLayout.height <= 54 * 12 + 80,
+  String(foldLayout.height))
 
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,

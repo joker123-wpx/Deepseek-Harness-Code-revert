@@ -156,19 +156,26 @@ const client = globalThis.__rewindHandoff.factory((specifier) => {
   if (specifier === 'react') return React
   throw new Error(`unexpected require(${specifier})`)
 })
-const t = (key) => client.dictionaries.zh[key] ?? key
+const t = (key, params) => {
+  const value = client.dictionaries.zh[key] ?? key
+  if (params === undefined) return value
+  return String(value).replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? '{' + name + '}'))
+}
 
 // The panel folds a long timeline to its newest ten rows. The preview does the
 // same, so what it shows matches the app; panel 3 below is expanded on purpose,
 // to show the fork in full.
-const folded = client.__internals.partitionRows(overview?.checkpoints ?? [], false, 10)
-const layout = client.buildLayout(overview?.sessions ?? [], folded.visible, { width: 900 })
+const foldState = client.__internals.folderize(overview?.checkpoints ?? [], false, 10)
+const layout = client.buildLayout(overview?.sessions ?? [], foldState.visible, { width: 900 })
 const selectedCheckpoint = overview?.checkpoints?.slice(-1)[0]
 const renderTree = (selectedId) => ReactDOMServer.renderToStaticMarkup(React.createElement(client.TreeGraph, {
   layout,
   selectedId,
   currentSessionId: overview?.currentSessionId,
   onSelect: () => {},
+  // The +/− control beside the rail, exactly as the panel passes it.
+  fold: foldState.fold,
+  onToggleFold: () => {},
   t,
 }))
 const tree = renderTree(undefined)
@@ -304,6 +311,7 @@ const footer = `<div class="rw-foot">
   <div class="rw-spacer"></div>
   <span>${(overview?.checkpoints ?? []).length} ${t('panel.checkpoints')}</span>
   <span class="rw-mono">rewind/v1</span>
+  <span class="rw-build" title="client ">v+</span>
   <a class="rw-btn rw-author" data-variant="quiet" href="${client.author.repository}" target="_blank" rel="noreferrer noopener"
      title="${client.author.name} · ${client.author.repository}">
     <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" style="flex:none;display:block">
@@ -315,10 +323,10 @@ const footer = `<div class="rw-foot">
 </div>`
 // The same fold row the panel draws above a folded timeline. Panel 3 passes its
 // own (expanded) graph, so it gets no fold row.
-const foldRow = folded.hiddenCount === 0 ? '' : `<button class="rw-fold" type="button">`
+const foldRow = foldState.fold === undefined ? 0 : foldState.fold.count === 0 ? '' : `<button class="rw-fold" type="button">`
   + '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style="flex:none;display:block">'
   + '<path fill="currentColor" d="M7 2.2a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6ZM7 5.7a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6ZM7 9.2a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6Z"/></svg>'
-  + `<span>${t('panel.foldOlder').replace('{count}', String(folded.hiddenCount))}</span></button>`
+  + `<span>${t('panel.foldOlder').replace('{count}', String(foldState.fold === undefined ? 0 : foldState.fold.count))}</span></button>`
 const panel = (graph, side) => `<div class="drawer">
   ${header}
   <div class="body">

@@ -10,6 +10,7 @@
  * Run: node test/host-mount.probe.mjs
  */
 import { promises as fs } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -276,9 +277,18 @@ check('no warnings were logged while running', registered.warnings.length === 0,
 
 await fs.rm(sandbox, { recursive: true, force: true })
 
+// The two halves report their build id; a mismatch is what "it still does not
+// work" looks like when only the browser half was refreshed.
+const clientSource = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
+const clientBuild = /const BUILD_ID = '([^']+)'/.exec(clientSource)?.[1]
+check('the host exports a build id', typeof host.BUILD_ID === 'string' && host.BUILD_ID.length > 0,
+  String(host.BUILD_ID))
+check('both halves carry the same build id', clientBuild === host.BUILD_ID,
+  JSON.stringify({ host: host.BUILD_ID, client: clientBuild }))
 const failed = results.filter((entry) => !entry.ok)
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`)
 if (failed.length > 0) {
   console.log('failed:', failed.map((entry) => entry.name).join(', '))
   process.exitCode = 1
 }
+

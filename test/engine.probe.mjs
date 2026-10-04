@@ -372,6 +372,8 @@ check('the rollback restored the first workspace as well',
 check('the rollback summary aggregates both roots',
   multiRollback.workspace.roots.length === 2 && multiRollback.workspace.failed.length === 0,
   JSON.stringify({ roots: multiRollback.workspace.roots.length, restored: multiRollback.workspace.restored, deleted: multiRollback.workspace.deleted }))
+check('the overview reports a host build id', typeof (await engine.overview(sessionId)).build?.host === 'string',
+  JSON.stringify((await engine.overview(sessionId)).build))
 check('root resolution is reported by status', (await engine.status()).roots.length >= 2)
 
 // ── a compaction is not a rewind ───────────────────────────────────────────
