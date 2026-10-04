@@ -52,6 +52,8 @@ check('the bundle registers itself with the module loader', handoff !== undefine
   JSON.stringify(handoff?.id))
 check('the factory is synchronous', typeof handoff?.factory === 'function' && handoff.factory.constructor.name !== 'AsyncFunction')
 
+// The card column's own minimum width, mirrored from the client for the geometry checks.
+const MIN_CARD_W = 240
 const moduleExports = handoff.factory((specifier) => {
   if (specifier === 'react') return React
   if (specifier === 'react-dom/client') return { createRoot: () => ({ render() {}, unmount() {} }) }
@@ -141,7 +143,13 @@ const selectedRects = (tree.match(/class="rw-selected"/g) ?? []).length
 check('exactly the selected row is highlighted', selectedRects === 1, String(selectedRects))
 check('the selected row is the one asked for', /class="rw-selected"[\s\S]*?<\/g>/.test(tree)
   || tree.includes('rw-selected'))
-check('row cards fill the graph viewport', layout.cardW >= 400, String(layout.cardW))
+check('row cards fill the graph viewport',
+  layout.cardW >= MIN_CARD_W && layout.cardW >= layout.width * 0.5,
+  `${layout.cardW} of ${layout.width}`)
+check('the cards sit inside the canvas with an even margin',
+  Math.abs(layout.cardX - (layout.width - (layout.cardX + layout.cardW))) <= 1
+  && layout.cardX + layout.cardW <= layout.width,
+  JSON.stringify({ cardX: layout.cardX, cardW: layout.cardW, width: layout.width }))
 check('every card starts in the card column, clear of the gutter', layout.nodes.every((node) => node.x === layout.cardX),
   JSON.stringify(layout.nodes.map((node) => node.x)))
 check('the turn gutter sits left of the first rail', layout.nodes.every((node) => node.railX > 0) && layout.cardX > 0,
@@ -831,19 +839,27 @@ const wideGraph = graphFor([{ id: 's1', title: '会话', live: true }], rowsOf(4
   durationMs: 31000,
 })), { width: 1400 })
 const wideLayout = wideGraph.layout
-check('the card column is centred, so the slack is split evenly',
+check('the card column is centred against the canvas',
   (() => {
-    const leftExtra = wideLayout.cardX - (wideLayout.railLeft + (wideLayout.laneCount - 1) * 26 + 16)
-    const rightGap = wideLayout.width - (wideLayout.cardX + wideLayout.cardW)
-    // The remaining difference is the canvas's own inset, nothing more.
-    return Math.abs(rightGap - leftExtra) <= 21
+    // The margin left of the first card must equal the margin right of the last
+    // one, at every realistic panel width. Centring inside the rail area kept the
+    // gutter and rails inside the left gap, which is what made the cards look
+    // off-centre — most visibly on a wide panel, and again after a restart.
+    const widths = [1400, 1000, 900, 700, 500]
+    const measured = widths.map((width) => {
+      const { layout } = graphFor([{ id: 's1', title: '会话', live: true }], rowsOf(4).map((row) => ({
+        ...row, sessionId: 's1',
+      })), { width })
+      return {
+        width,
+        left: Math.round(layout.cardX),
+        right: Math.round(width - (layout.cardX + layout.cardW)),
+      }
+    })
+    wideLayout.__measured = measured
+    return measured.every((entry) => Math.abs(entry.left - entry.right) <= 1)
   })(),
-  JSON.stringify({
-    cardX: wideLayout.cardX,
-    cardW: wideLayout.cardW,
-    rightGap: wideLayout.width - (wideLayout.cardX + wideLayout.cardW),
-    railLeft: wideLayout.railLeft,
-  }))
+  JSON.stringify(wideLayout.__measured ?? []))
 check('a capped card stays inside the canvas on both sides',
   wideLayout.cardW <= 760 && wideLayout.cardX + wideLayout.cardW <= wideLayout.width
   && wideLayout.cardX >= wideLayout.railLeft,
