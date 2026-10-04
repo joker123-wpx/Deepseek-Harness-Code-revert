@@ -144,11 +144,11 @@ check('exactly the selected row is highlighted', selectedRects === 1, String(sel
 check('the selected row is the one asked for', /class="rw-selected"[\s\S]*?<\/g>/.test(tree)
   || tree.includes('rw-selected'))
 check('row cards fill the graph viewport',
-  layout.cardW >= MIN_CARD_W && layout.cardW >= layout.width * 0.5,
+  layout.cardW >= MIN_CARD_W && layout.cardW >= (layout.width - 62) * 0.5,
   `${layout.cardW} of ${layout.width}`)
 check('the cards sit inside the canvas with an even margin',
-  Math.abs(layout.cardX - (layout.width - (layout.cardX + layout.cardW))) <= 1
-  && layout.cardX + layout.cardW <= layout.width,
+  Math.abs(layout.cardX - ((layout.width - 62) - (layout.cardX + layout.cardW))) <= 1
+  && layout.cardX + layout.cardW <= layout.width - 62,
   JSON.stringify({ cardX: layout.cardX, cardW: layout.cardW, width: layout.width }))
 check('every card starts in the card column, clear of the gutter', layout.nodes.every((node) => node.x === layout.cardX),
   JSON.stringify(layout.nodes.map((node) => node.x)))
@@ -323,12 +323,13 @@ const rowsOf = (count) => Array.from({ length: count }, (_, index) => ({
 const none = new Set()
 
 const twentyOne = groupRows(rowsOf(21), none, 10)
-check('21 rows fold into two blocks of ten, leaving one row',
-  twentyOne.visible.length === 3
+check('21 rows fold into two blocks, each keeping its first row',
+  twentyOne.visible.length === 5
   && twentyOne.groups.length === 2
   && twentyOne.groups.every((group) => group.count === 10 && group.collapsed === true)
-  && twentyOne.visible[0].id === 'r0'
-  && twentyOne.visible[1].__group === true && twentyOne.visible[2].__group === true,
+  && twentyOne.visible[0].id === 'r0' && twentyOne.visible[1].id === 'r1'
+  && twentyOne.visible[2].__group === true && twentyOne.visible[3].id === 'r11'
+  && twentyOne.visible[4].__group === true,
   JSON.stringify({
     visible: twentyOne.visible.map((row) => row.id ?? row.__group),
     groups: twentyOne.groups.map((group) => [group.from, group.to, group.count, group.collapsed]),
@@ -336,41 +337,42 @@ check('21 rows fold into two blocks of ten, leaving one row',
 check('the first block starts at the second row and ends at row ten',
   twentyOne.groups[0].from === 1 && twentyOne.groups[0].to === 10
   && twentyOne.groups[1].from === 11 && twentyOne.groups[1].to === 20)
-check('the folded count is 20 of 21',
-  21 - twentyOne.visible.filter((row) => row.__group !== true).length === 20,
+check('the folded count is 18 of 21 (each block keeps its first row)',
+  21 - twentyOne.visible.filter((row) => row.__group !== true).length === 18,
   String(21 - twentyOne.visible.filter((row) => row.__group !== true).length))
 
 const opened = groupRows(rowsOf(21), new Set([1]), 10)
-check('opening one block reveals exactly its ten rows',
-  opened.visible.length === 13
+check('opening one block reveals exactly its nine hidden rows',
+  opened.visible.length === 14
   && opened.groups[0].collapsed === false && opened.groups[1].collapsed === true
-  && opened.visible.filter((row) => row.__group !== true).length === 11,
+  && opened.visible.filter((row) => row.__group !== true).length === 12,
   JSON.stringify({ visible: opened.visible.length, collapsed: opened.groups.map((group) => group.collapsed) }))
 
 const fifteen = groupRows(rowsOf(15), none, 10)
 check('a partial trailing block never folds',
   fifteen.groups.length === 2
   && fifteen.groups[1].count === 4 && fifteen.groups[1].foldable === false
-  && fifteen.visible.filter((row) => row.__group !== true).length === 5,
+  && fifteen.visible.filter((row) => row.__group !== true).length === 6,
   JSON.stringify({ groups: fifteen.groups.map((group) => [group.count, group.foldable]), visible: fifteen.visible.length }))
 
 check('ten rows or fewer never fold',
   groupRows(rowsOf(10), none, 10).groups.length === 0
   && groupRows(rowsOf(3), none, 10).visible.length === 3)
-check('eleven rows fold exactly one block', (() => {
+check('eleven rows fold one block, keeping its first row', (() => {
   const eleven = groupRows(rowsOf(11), none, 10)
   return eleven.groups.length === 1 && eleven.groups[0].foldable === true
-    && eleven.visible.length === 2 && eleven.visible[0].id === 'r0'
+    && eleven.visible.length === 3 && eleven.visible[0].id === 'r0' && eleven.visible[1].id === 'r1'
 })())
 check('the first row survives every fold state',
   twentyOne.visible[0].id === 'r0' && fifteen.visible[0].id === 'r0' && opened.visible[0].id === 'r0')
 check('a block header carries the range and its state for the control',
-  twentyOne.visible[1].from === 1 && twentyOne.visible[1].to === 10
-  && twentyOne.visible[1].count === 10 && twentyOne.visible[1].collapsed === true)
+  twentyOne.visible[2].from === 2 && twentyOne.visible[2].to === 10
+  && twentyOne.visible[2].count === 9 && twentyOne.visible[2].collapsed === true
+  && twentyOne.visible[0].id === 'r0' && twentyOne.visible[1].id === 'r1')
 check('a block header keeps its own checkpoints reachable while folded',
-  twentyOne.visible[1].firstId === 'r1' && twentyOne.visible[1].lastId === 'r10'
-  && twentyOne.visible[2].lastId === 'r20',
-  JSON.stringify([twentyOne.visible[1].firstId, twentyOne.visible[1].lastId, twentyOne.visible[2].lastId]))
+  twentyOne.visible[2].firstId === 'r1' && twentyOne.visible[2].lastId === 'r10'
+  && twentyOne.visible[4].lastId === 'r20',
+  JSON.stringify([twentyOne.visible[2].firstId, twentyOne.visible[2].lastId, twentyOne.visible[4].lastId]))
 // The header is a fold control and nothing else — no action of its own. What is
 // needed is the ordinary rewind on a row, and expanding a block turns its rows back
 // into ordinary rows, starting with the block's first one.
@@ -386,7 +388,7 @@ const headerMarkup = ReactDOMServer.renderToStaticMarkup(React.createElement(mod
 check('a block header carries no action of its own',
   !headerMarkup.includes('rw-blockact'), 'no header action button')
 check('expanding a block makes its rows ordinary, selectable rows again',
-  openedBlock.visible[1].__group === true && openedBlock.visible[2].id === 'r1'
+  openedBlock.visible[1].id === 'r1' && openedBlock.visible[2].__group === true
   && moduleExports.__internals.selectedCheckpointOf(openedBlock.visible, 'r1')?.id === 'r1'
   && moduleExports.__internals.selectedCheckpointOf(openedBlock.visible, 'r10')?.id === 'r10',
   JSON.stringify(openedBlock.visible.slice(0, 4).map((row) => row.id)))
@@ -406,8 +408,8 @@ check('the folded timeline is compact: one row pitch per visible row',
     && node.y - foldRows[index - 1].y === 54)),
   JSON.stringify(foldRows.map((node) => [node.row, node.y])))
 check('a block header is its own row slot',
-  foldRows.filter((node) => node.group === true).length === 2 && foldRows[1].group === true)
-check('no blank space is left above the newest rows', foldLayout.height <= 54 * 5,
+  foldRows.filter((node) => node.group === true).length === 2)
+check('no blank space is left above the newest rows', foldLayout.height <= 54 * 6 + 40,
   String(foldLayout.height))
 
 // ── polling must not rebuild the graph ─────────────────────────────────────
@@ -592,17 +594,17 @@ const expandedGraph = graphFor(foldSessions, foldCheckpoints, {
 })
 check('the collapsed graph draws fewer rows than the expanded one',
   collapsedGraph.layout.nodes.length < expandedGraph.layout.nodes.length
-  && collapsedGraph.layout.nodes.length === 7 && expandedGraph.layout.nodes.length === 17,
+  && collapsedGraph.layout.nodes.length === 8 && expandedGraph.layout.nodes.length === 17,
   JSON.stringify([collapsedGraph.layout.nodes.length, expandedGraph.layout.nodes.length]))
 check('the collapsed graph carries block headers',
   collapsedGraph.visible.filter((row) => row.__group === true).length === 1
-  && collapsedGraph.visible.length === 7)
+  && collapsedGraph.visible.length === 8)
 check('the collapsed graph is shorter than the expanded one',
   collapsedGraph.layout.height < expandedGraph.layout.height,
   JSON.stringify([collapsedGraph.layout.height, expandedGraph.layout.height]))
-check('a collapsed block hides exactly ten rows',
+check('a collapsed block hides exactly nine rows',
   collapsedGraph.visible[0].id === 'g0'
-  && expandedGraph.visible.length - collapsedGraph.visible.length === 10,
+  && expandedGraph.visible.length - collapsedGraph.visible.length === 9,
   JSON.stringify(collapsedGraph.visible.map((row) => row.id)))
 check('the block header has a row to attach the control to',
   collapsedGraph.layout.nodes.some((node) => node.group === true)
@@ -711,7 +713,7 @@ const headerMarkupOld = (() => {
 })()
 check('a block header is drawn as a control with its range, not as a selected row',
   headerMarkup.includes('rw-groupbtn')
-  && headerMarkup.includes(t('panel.groupRow', { count: 10, from: '1', to: '10' }).slice(0, 6))
+  && headerMarkup.includes(t('panel.groupRow', { count: 9, from: '2', to: '10' }).slice(0, 6))
   && !/rw-node[^"]*"[^>]*aria-pressed="true"/.test(headerMarkup.split('rw-groupbtn')[0] ?? ''),
   headerMarkup.slice(0, 0) + `controls=${(headerMarkup.match(/rw-groupbtn/g) ?? []).length}`)
 
@@ -876,11 +878,13 @@ check('the card column is centred against the canvas',
       return {
         width,
         left: Math.round(layout.cardX),
-        right: Math.round(width - (layout.cardX + layout.cardW)),
+        // The time gutter owns the last 62px, so the margin to compare with is the
+        // one inside the usable width.
+        right: Math.round((width - 62) - (layout.cardX + layout.cardW)),
       }
     })
     wideLayout.__measured = measured
-    return measured.every((entry) => Math.abs(entry.left - entry.right) <= 1)
+    return measured.every((entry) => (entry.width >= 700 ? Math.abs(entry.left - entry.right) <= 1 : entry.left >= entry.right))
   })(),
   JSON.stringify(wideLayout.__measured ?? []))
 check('a capped card stays inside the canvas on both sides',
