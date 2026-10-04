@@ -186,6 +186,34 @@ check('selecting a row stops the canvas from clearing it', stopped
   && JSON.stringify(events.pop()) === JSON.stringify(['select', groups[0].key]),
   JSON.stringify({ stopped, last: events.slice(-1) }))
 
+// ── edit-and-re-ask anchoring ─────────────────────────────────────────────
+// Re-asking turn k must rewind to the checkpoint just before it (the row that
+// can cut at turn k), which is NOT the same as requiring row k's own canFork:
+// the newest turn has no next turn, yet it is the most likely turn to re-ask.
+const anchorFor = moduleExports.__internals.reaskAnchorFor
+const anchorRows = [
+  { id: 'a0', sessionId: 's1', afterTurn: 0, kind: 'auto', reachable: true, prompt: '' },
+  { id: 'a1', sessionId: 's1', afterTurn: 1, kind: 'auto', reachable: true, prompt: '第一问' },
+  { id: 'a2', sessionId: 's1', afterTurn: 2, kind: 'auto', reachable: true, prompt: '第二问' },
+  // The newest turn: a conversation-only row with no next turn to fork.
+  { id: 'a3', sessionId: 's1', afterTurn: 3, kind: 'history', reachable: false, hasNextTurn: false, prompt: '第三问' },
+  { id: 'a4', sessionId: 's1', afterTurn: 2.5, kind: 'safety', reachable: false, prompt: '' },
+]
+check('re-asking the newest turn anchors on the row above it, not on canFork',
+  anchorFor(anchorRows, anchorRows[3])?.id === 'a2',
+  JSON.stringify(anchorFor(anchorRows, anchorRows[3])?.id))
+check('re-asking a middle turn anchors on the row above that one',
+  anchorFor(anchorRows, anchorRows[2])?.id === 'a1')
+check('a backup row is never used as a re-ask anchor',
+  anchorFor(anchorRows, anchorRows[3])?.kind !== 'safety')
+check('the initial row cannot be re-asked', anchorFor(anchorRows, anchorRows[0]) === undefined)
+check('a row with no prompt cannot be re-asked',
+  anchorFor(anchorRows, { ...anchorRows[1], prompt: '' }) === undefined)
+check('a turn whose user message is off the surface cannot be re-asked',
+  anchorFor([{ ...anchorRows[1], reachable: false }, anchorRows[2]], anchorRows[2])?.id === undefined
+  || anchorFor([{ ...anchorRows[1], reachable: false }, anchorRows[2]], anchorRows[2]) === undefined,
+  JSON.stringify(anchorFor([{ ...anchorRows[1], reachable: false }, anchorRows[2]], anchorRows[2])))
+
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
 }))

@@ -159,4 +159,7 @@ window.__ModuleLoader__.load({ id: 'dsh-plugin-rewind', factory: (require) => { 
 ### 弹出/收起动画与「改完再问」
 
 - **动画**：浮层不再在关闭时卸载。layer 常驻并带 `data-state=open|closed`，关闭态的抽屉 `transform:translateX(28px)` + `opacity:0`，遮罩 `opacity:0`，`visibility:hidden` 延后 0.24s 生效（保证退场动画播完，同时把关闭态移出 Tab 顺序与命中测试）。面板状态（选中项、提示条）因此也能跨开关保留。`prefers-reduced-motion` 下禁用过渡。
-- **改完再问**：详情里的提问是 `<textarea>`，草稿随选中项重置。点「回退并重新提问」= 先 `apply{conversation:'inplace'}` 让模型看不到那一轮，再通过会话座位给插件暴露的公开面 `InputActions`（`setDraft` / `submit`）把编辑后的文本送进输入框并提交。这个面由隐形会话探针座位捕获（`noteInputActions`），按 sessionId 存放——分叉到别的分支时也能找到正确的输入框。若该座位没挂载，插件会明确报「拿不到输入框控制权」而不是静默失败。
+- **改完再问**：详情里的提问是 `<textarea>`，草稿随选中项重置；按钮固定为**金色**（`data-variant=gold`），是面板里唯一的金色控件，因此不需要读文字就能找到它。
+  - **锚点规则**（容易写错、已有专门断言）：回退会切在「下一轮的用户消息」上，所以「撤销第 k 轮」要应用的是**它上面那一行**检查点（`reaskAnchorFor`：同会话、非 safety、`afterTurn` 更小、且 `reachable === true` 的那一行）。早先用「本行 `canFork`」做门控，结果**最新一轮**（没有下一轮可切）反而是禁用状态——而它恰恰是最常需要改完重问的一轮。
+  - 执行顺序：先 `apply{conversation:'inplace'}`（锚点检查点）让模型看不到这一轮，再通过会话座位暴露的公开面 `InputActions`（`setDraft` / `submit`）把编辑后的文本送进输入框并提交。该面由隐形会话探针座位捕获（`noteInputActions`），按 sessionId 存放。若座位没挂载，插件明确报「拿不到输入框控制权」而不是静默失败。
+  - 回退之后时间线的样子：被撤销的轮次变灰＋虚线＋「已回退」徽标、分支 chip 计数带 `(N 已回退)`，底部新增一轮改写后的提问（绿色色条 = 含文件快照），而回退锚点那一行重新变得可回退。`test/live-forensics.mjs` 的第三块面板就是按这套标记语义渲染出来的示例。

@@ -132,6 +132,12 @@ if (overview !== undefined) {
     checkpoint.abandoned = next !== undefined && next.surfaced !== true
   }
   console.log(`preview flags: ${overview.checkpoints.map((checkpoint) => checkpoint.alreadyRewound ? 'rewound' : checkpoint.compacted ? 'compacted' : 'active').join(', ')}`)
+  console.log('live checkpoints (turn | kind | nextTurn | canFork | prompt):')
+  for (const checkpoint of overview.checkpoints) {
+    console.log(`   ${String(checkpoint.afterTurn).padEnd(5)} ${String(checkpoint.kind).padEnd(8)} `
+      + `${String(checkpoint.hasNextTurn).padEnd(5)} ${String(checkpoint.canFork).padEnd(5)} `
+      + `${String(checkpoint.prompt ?? '').replace(/\s+/g, ' ').slice(0, 34)}`)
+  }
 }
 
 const require_ = createRequire(join(MODULES, 'noop.js'))
@@ -171,7 +177,99 @@ const details = ReactDOMServer.renderToStaticMarkup(React.createElement(client.D
   onAction: () => {},
   busy: false,
   plan: undefined,
+  canReask: selectedCheckpoint?.canFork === true,
   onClose: () => {},
+}))
+
+// ── what the panel looks like right after "rewind and ask again" ───────────
+// Derived from the same live payload with the same flag semantics the host
+// applies after a rewind: every checkpoint whose NEXT turn was folded away reads
+// `alreadyRewound` (grey, dashed, off-branch), and one new turn is appended for
+// the edited prompt. A middle checkpoint is used so the example shows what
+// abandoning several turns looks like. This is a rendered example of the
+// resulting data shape, not a capture of a live rewind.
+const forkable = (overview?.checkpoints ?? []).filter((checkpoint) => checkpoint.canFork === true)
+const rewindTarget = forkable[Math.floor(forkable.length / 2)]
+const lastTurn = (overview?.checkpoints ?? []).reduce((max, checkpoint) => Math.max(max, checkpoint.afterTurn ?? 0), 0)
+const rewindFromTurn = rewindTarget === undefined ? undefined : (rewindTarget.afterTurn ?? 0) + 1
+const newTurn = lastTurn + 1
+const editedPrompt = rewindTarget === undefined
+  ? ''
+  : `${String(rewindTarget.prompt ?? '').trim()}（这次先给结论，再给步骤，并附一个最小复现）`
+const abandonedTurns = []
+for (let turn = rewindFromTurn ?? 0; turn <= lastTurn; turn += 1) abandonedTurns.push(turn)
+const afterRewind = rewindTarget === undefined ? undefined : {
+  ...overview,
+  checkpoints: [
+    ...overview.checkpoints.map((checkpoint) => {
+      const afterTurn = checkpoint.afterTurn ?? 0
+      const nextTurn = afterTurn + 1
+      // A turn the rewind folded away: this checkpoint can no longer be rewound.
+      // Only an exact integer turn matches, exactly as the host resolves it, so a
+      // backup row at turn+0.5 is not dragged into the abandoned branch.
+      if (Number.isInteger(afterTurn) && nextTurn >= rewindFromTurn && nextTurn <= lastTurn) {
+        return {
+          ...checkpoint,
+          alreadyRewound: true,
+          compacted: false,
+          promptReplaced: false,
+          replacedByOther: false,
+          reachable: false,
+          abandoned: true,
+          canFork: false,
+          hasNextTurn: false,
+        }
+      }
+      // The checkpoint sitting just before the new turn becomes rewindable again.
+      if ((checkpoint.afterTurn ?? 0) === lastTurn) {
+        return {
+          ...checkpoint,
+          alreadyRewound: false,
+          reachable: true,
+          abandoned: false,
+          canFork: true,
+          hasNextTurn: true,
+        }
+      }
+      return checkpoint
+    }),
+    {
+      id: 'cp-example-after-rewind',
+      sessionId: overview.currentSessionId,
+      afterTurn: newTurn,
+      kind: 'auto',
+      label: '自动',
+      prompt: editedPrompt,
+      createdAt: Date.now(),
+      manifest: true,
+      degraded: false,
+      stats: { files: 27, bytes: 402653, skipped: 0, truncated: false, roots: 1 },
+      roots: overview.roots ?? [],
+      rootsCount: (overview.roots ?? []).length,
+      live: true,
+      forkAtSeq: 999999,
+      canFork: false,
+      hasNextTurn: false,
+      alreadyRewound: false,
+      compacted: false,
+      promptReplaced: false,
+      replacedByOther: false,
+      reachable: false,
+      abandoned: false,
+      droppedTurns: 0,
+      canRestoreWorkspace: true,
+    },
+  ],
+}
+const afterLayout = afterRewind === undefined
+  ? undefined
+  : client.buildLayout(afterRewind.sessions, afterRewind.checkpoints, { width: 900 })
+const treeAfter = afterLayout === undefined ? '' : ReactDOMServer.renderToStaticMarkup(React.createElement(client.TreeGraph, {
+  layout: afterLayout,
+  selectedId: undefined,
+  currentSessionId: afterRewind.currentSessionId,
+  onSelect: () => {},
+  t,
 }))
 
 // A faithful static replica of the panel chrome, so the preview shows the real
@@ -232,16 +330,49 @@ p{margin:0 0 6px 0;color:#84848c;font-size:12px;align-self:flex-start}
 .graph{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;background:var(--rw-bg-2)}
 .scroll{flex:1 1 auto;min-height:0;overflow:auto}
 .side{flex:0 0 336px;border-left:1px solid var(--rw-line);padding:12px 14px 16px 14px;overflow:auto;background:var(--rw-bg)}
+/* A mock of the product's composer, to show what "continue after the rewind"
+   looks like next to the panel. Not part of the plugin's own UI. */
+.chat{width:min(1240px,100%);display:flex;flex-direction:column;gap:8px}
+.bubble{align-self:flex-start;max-width:70%;background:var(--rw-bg-3);border:1px solid var(--rw-line);border-radius:12px;padding:9px 12px;font-size:12.5px}
+.bubble[data-role=user]{align-self:flex-end;background:rgba(217,161,58,.16);border-color:rgba(217,161,58,.5)}
+.bubble[data-role=ghost]{border-style:dashed;color:#84848c;background:transparent}
+.composer{display:flex;gap:8px;align-items:flex-end;background:var(--rw-bg-3);border:1px solid var(--rw-line);border-radius:12px;padding:9px 10px}
+.composer .text{flex:1 1 auto;font-size:12.5px;white-space:pre-wrap;color:var(--rw-fg-2)}
+.composer[data-state=sending]{border-color:rgba(217,161,58,.6)}
+.note{color:#84848c;font-size:11.5px}
 ${client.css ?? ''}
 </style></head>
 <body><div class="page rw-root">
 <h1>对话回退 / 工作区回滚 — 面板预览</h1>
 <p>由 test/live-forensics.mjs 用真实检查点数据渲染（react-dom/server + 插件自身的样式表），不是运行中的界面截图。</p>
-<div class="caption">默认状态：只有时间线，详情不显示（点选检查点才出现）</div>
+<div class="caption">① 默认状态：只有时间线，详情不显示（点选检查点才出现）</div>
 ${panel(tree, '')}
-<div class="caption">选中某个检查点后：右侧出现详情，点空白处或 × 收起</div>
+<div class="caption">② 选中某个检查点：右侧出现详情；提问可编辑，金色按钮＝回退并重新提问</div>
 ${panel(treeSelected, `<div class="side">${details}</div>`)}
+<div class="caption">③ 点了金色按钮之后（示例：回退到第 ${rewindFromTurn} 轮之前并改写提问）：第 ${rewindFromTurn}–${lastTurn} 轮变灰＋虚线＋「已回退」，底部新增第 ${newTurn} 轮</div>
+${panel(treeAfter, '')}
+<div class="chat">
+  <div class="note">下面是聊天区的示意（产品自带的输入框，不属于插件 UI）：回退后插件把改写的提问放进输入框并提交。</div>
+  <div class="bubble" data-role=ghost">（被回退的第 ${rewindFromTurn}–${lastTurn} 轮不再出现在模型的可见历史里；聊天记录里已显示的原文不会消失，日志与树图都完整保留）</div>
+  <div class="bubble" data-role=user>${editedPrompt || '（示例：改写后的提问）'}</div>
+  <div class="composer" data-state=sending>
+    <div class="text">${editedPrompt || '（示例：改写后的提问）'}</div>
+    <button class="rw-btn" data-variant="gold" type="button">${t('action.reask')}</button>
+  </div>
+  <div class="note">金色按钮与面板内的是同一个：先回退，再把这段提问发送成新一轮。</div>
+</div>
 </div></body></html>`
 await fs.writeFile(outPath, html, 'utf8')
 console.log(`preview written: ${outPath}`)
 console.log(`tree markup: ${tree.length} bytes, nodes=${(tree.match(/class="rw-node"/g) ?? []).length}, lanes=${(layout.lanes ?? []).length}, rows=${(layout.rows ?? []).length}, cardX=${layout.cardX}, cardW=${layout.cardW}`)
+console.log(`after-rewind example: rewound from turn ${rewindFromTurn}, appended turn ${newTurn ?? lastTurn + 1}, nodes=${afterLayout === undefined ? 0 : afterLayout.nodes.length}`)
+if (afterRewind !== undefined) {
+  // The example's own data, so the picture can be checked without reading SVG.
+  for (const checkpoint of afterRewind.checkpoints) {
+    const state = checkpoint.kind === 'safety'
+      ? 'backup'
+      : checkpoint.alreadyRewound === true ? 'REWOUND' : checkpoint.hasNextTurn === true ? 'rewindable' : 'tail'
+    const prompt = String(checkpoint.prompt ?? '').replace(/\s+/g, ' ').slice(0, 42)
+    console.log(`   turn ${String(checkpoint.afterTurn).padEnd(4)} ${state.padEnd(11)} ${prompt}`)
+  }
+}
