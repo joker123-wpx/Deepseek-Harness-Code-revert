@@ -757,6 +757,21 @@ check('the dismiss control exists so a banner can be cleared by hand',
     conversationOnly === t('notice.agentRewindReask', { checkpointId: 'cp-anchor', turn: '9', prompt: '改写的提问' }))
 }
 
+// ── the panel gets out of the way once a rollback lands ────────────────────
+// Reported: after a rewind the panel stayed open and the files had not changed.
+// The files are the panel's own job (no open turn needed), so they change at once;
+// the conversation marker is delegated; and a landed rollback closes the drawer.
+const shellSource = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
+check('a landed rollback closes the panel',
+  (shellSource.match(/if \(variant === 'overlay'\) setOverlay\(false\)/g) ?? []).length >= 2,
+  String((shellSource.match(/if \(variant === 'overlay'\) setOverlay\(false\)/g) ?? []).length))
+check('the files are restored by the panel itself, before the agent is asked',
+  shellSource.includes('const restoreFilesNow = React.useCallback')
+  && shellSource.indexOf('await restoreFilesNow(selected)') < shellSource.indexOf('await runViaAgent(agentRewindPrompt(t, {\n                checkpointId: anchor.id'),
+  'restoreFilesNow precedes the delegation')
+check('the delegated re-ask no longer asks for the files twice',
+  shellSource.includes('prompt: text,\n                restoreWorkspace: false,'))
+
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
 }))
