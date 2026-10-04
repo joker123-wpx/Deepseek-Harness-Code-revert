@@ -271,8 +271,9 @@ check('the dead run is counted on its lane, and the new lane is flagged',
   forkLayout.lanes.some((lane) => lane.rewound === 4)
   && forkLayout.lanes.some((lane) => lane.newBranch === true && lane.dead !== true),
   JSON.stringify(forkLayout.lanes.map((lane) => [lane.column, lane.dead, lane.newBranch, lane.rewound, lane.chip])))
-check('the new lane is labelled as the branch after a rewind',
-  forkLayout.lanes.some((lane) => String(lane.chip).includes(t('badge.newBranch'))))
+check('no branch chip is labelled by a badge: the branch name is the label',
+  forkLayout.lanes.every((lane) => !String(lane.chip).includes(t('badge.newBranch'))
+    && !String(lane.chip).includes(t('badge.current'))))
 const forkTree = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: forkLayout, selectedId: undefined, currentSessionId: 's1', onSelect: () => {}, t,
 }))
@@ -738,16 +739,17 @@ check('clicking the chip reveals the whole title without spilling out of the box
     return popover !== '' && popover.includes('工作区回滚') && !popover.includes('…')
   })(),
   'the revealed title carries the whole text')
-// The visible chip is the title alone; the "current branch" badge lives in the
-// accessible name and the tooltip, where it costs no space and clutters nothing.
-check('the chip shows the title only, with the current-branch badge kept for a11y',
+// The chip is the branch's name alone: no "current branch" and no "after rewind"
+// text anywhere in it — not on the chip, not in its tooltip. The current lane is
+// stated structurally with `aria-current` instead.
+check('the chip shows the title only, with no badge in the visible text',
   (() => {
-    const label = /class="rw-chip"[^>]*aria-label="([^"]*)"/.exec(chipClosed)?.[1] ?? ''
     const visible = [...chipClosed.matchAll(/<text[^>]*>([^<]*)<\/text>/g)]
       .map((match) => match[1]).join(' ')
-    return label.includes('当前分支') && !visible.includes('当前分支')
+    return !visible.includes('当前分支') && !visible.includes('回退后新分支')
+      && chipClosed.includes('aria-current="true"')
   })(),
-  'badge in a11y only')
+  'title only, current stated structurally')
 // ── each rewind is its own branch ──────────────────────────────────────────
 // Reported: after a first rewind (2–7), continuing to 14 and rewinding to 10 drew
 // the whole thing as one "2–15 new branch". The shape must be
