@@ -738,6 +738,39 @@ check('clicking the chip reveals the whole title without spilling out of the box
     return popover !== '' && popover.includes('工作区回滚') && !popover.includes('…')
   })(),
   'the revealed title carries the whole text')
+// ── each rewind is its own branch ──────────────────────────────────────────
+// Reported: after a first rewind (2–7), continuing to 14 and rewinding to 10 drew
+// the whole thing as one "2–15 new branch". The shape must be
+//   2–7 dead · 8 9 kept · 10–15 dead · 16+ the new branch
+// with one elbow per cut, which needs the host's per-rewind turn ranges.
+{
+  const cutSessions = [{
+    id: 's1',
+    title: '会话',
+    live: true,
+    cuts: [{ index: 0, fromTurn: 2, toTurn: 7, count: 6 }, { index: 1, fromTurn: 10, toTurn: 15, count: 6 }],
+  }]
+  const cutCheckpoints = []
+  for (let turn = 0; turn <= 20; turn += 1) {
+    const rewoundAway = (turn >= 1 && turn <= 6) || (turn >= 9 && turn <= 14)
+    cutCheckpoints.push({
+      id: `cp${turn}`, sessionId: 's1', afterTurn: turn, manifest: true, prompt: `p${turn}`,
+      abandoned: rewoundAway, ownTurnRewound: false,
+    })
+  }
+  const cutGraph = graphFor(cutSessions, cutCheckpoints, { width: 1000, limit: 10 ** 9 })
+  const deadTurns = cutGraph.layout.nodes.filter((node) => node.dead === true).map((node) => node.turn)
+  const liveKept = cutGraph.layout.nodes.filter((node) => node.dead !== true && node.column === 1).map((node) => node.turn)
+  const newest = cutGraph.layout.nodes.filter((node) => node.column === 2).map((node) => node.turn)
+  const elbows = cutGraph.layout.edges.filter((edge) => edge.surface === true)
+    .map((edge) => [edge.from.checkpoint.afterTurn, edge.to.checkpoint.afterTurn])
+  check('each rewind draws as its own branch, not one lumped run',
+    deadTurns.join(',') === '1,2,3,4,5,6,9,10,11,12,13,14'
+    && liveKept.join(',') === '7,8'
+    && newest.length > 0 && newest[0] === 15
+    && JSON.stringify(elbows) === JSON.stringify([[0, 7], [8, 15]]),
+    JSON.stringify({ deadTurns, liveKept, newest: newest.slice(0, 3), elbows }))
+}
 // ── every action the panel offers must reach a real branch ─────────────────
 // A banner reading "nothing to run" means a confirmed action fell through every
 // branch of the executor. Nothing in the UI may produce such a request, so the
