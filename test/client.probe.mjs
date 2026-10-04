@@ -716,6 +716,47 @@ check('every panel action reaches a real branch of the executor',
 check('the dismiss control exists so a banner can be cleared by hand',
   typeof t('action.dismiss') === 'string' && t('action.dismiss').length > 0)
 
+// ── an idle re-ask must roll the CODE back too ─────────────────────────────
+// "Rewind and ask again" that leaves the workspace alone answers the new prompt
+// against the tree the abandoned turn produced, which is not a rollback at all.
+{
+  const deps = recordingDeps()
+  await executeRequest({
+    checkpoint: { id: 'cpNewest', canRestoreWorkspace: true },
+    conversation: 'inplace',
+    workspace: 'restore',
+    reask: true,
+    reaskFrom: 'cpAnchor',
+    text: '改写的提问',
+  }, deps)
+  check('an edited re-ask restores the files first, then rewinds and sends',
+    deps.calls.length === 2
+    && deps.calls[0][1].workspace === 'restore' && deps.calls[0][1].conversation === 'none'
+    && deps.calls[1][1].checkpointId === 'cpAnchor' && deps.calls[1][1].conversation === 'inplace'
+    && deps.drafts[0] === '改写的提问' && deps.submissions.length === 1,
+    JSON.stringify({ calls: deps.calls.map((call) => call[1]), drafts: deps.drafts }))
+}
+{
+  // The probe's local `t` does not interpolate params, so the templates are checked
+  // for their placeholders and the filled result is asserted with a local fill.
+  const fillPrompt = (text, params) => String(text)
+    .replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? `{${name}}`))
+  const codePrompt = moduleExports.__internals.agentRewindPrompt(t, {
+    checkpointId: 'cp-anchor', turn: 9, prompt: '改写的提问', restoreWorkspace: true,
+  })
+  const conversationOnly = moduleExports.__internals.agentRewindPrompt(t, {
+    checkpointId: 'cp-anchor', turn: 9, prompt: '改写的提问', restoreWorkspace: false,
+  })
+  check('the delegated re-ask asks for the code as well as the conversation',
+    fillPrompt(codePrompt, { checkpointId: 'cp-anchor', turn: 9, prompt: '改写的提问' }).includes('cp-anchor')
+    && codePrompt !== conversationOnly
+    && t('notice.agentRewindCodeReask').includes('action=apply')
+    && t('notice.agentRewindCodeReask').includes('工作区'),
+    codePrompt.slice(0, 140))
+  check('a checkpoint without files falls back to the conversation-only wording',
+    conversationOnly === t('notice.agentRewindReask', { checkpointId: 'cp-anchor', turn: '9', prompt: '改写的提问' }))
+}
+
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
 }))
