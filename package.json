@@ -47,6 +47,10 @@
     "time-travel",
     "session-fork"
   ],
+  "author": {
+    "name": "joker123-wpx",
+    "url": "https://github.com/joker123-wpx"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/joker123-wpx/Deepseek-Harness-Code-revert.git"

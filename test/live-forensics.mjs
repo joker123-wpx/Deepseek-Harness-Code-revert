@@ -299,6 +299,13 @@ const footer = `<div class="rw-foot">
   <div class="rw-spacer"></div>
   <span>${(overview?.checkpoints ?? []).length} ${t('panel.checkpoints')}</span>
   <span class="rw-mono">rewind/v1</span>
+  <a class="rw-author" href="${client.author.repository}" target="_blank" rel="noreferrer noopener"
+     title="${client.author.name} · ${client.author.repository}">
+    <svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true" style="flex:none;display:block">
+      <path fill="currentColor" d="M8.6 1.4h4v4h-1.5V4.2L7.2 8.1 6.1 7l3.9-3.9H8.6V1.4ZM1.4 4.4h4.2v1.5H2.9v5.2h5.2V8.4h1.5v4.2H1.4V4.4Z"/>
+    </svg>
+    <span>${client.author.name}</span>
+  </a>
   ${button(t('action.close'), 'quiet')}
 </div>`
 const panel = (graph, side) => `<div class="drawer">

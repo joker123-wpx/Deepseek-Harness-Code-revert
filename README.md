@@ -2,6 +2,8 @@
 
 [English](README.en.md) · [架构与实现笔记](docs/ARCHITECTURE.md) · Apache-2.0
 
+**作者：[joker123-wpx](https://github.com/joker123-wpx)** · **仓库：<https://github.com/joker123-wpx/Deepseek-Harness-Code-revert>**（插件面板底部同样带这个名字与跳转链接）
+
 DeepSeek Harness 插件：**对话回退**、**工作区代码回滚**，以及一张**无 emoji 的可视化检查点树图**。
 
 每一轮对话结束时，插件为工作区建立一次内容寻址快照；树图上每个节点就是一个可回退的检查点。用户可以在树图上任选一个节点，把**对话**回退到那一轮之前、把**文件**回滚到那一刻，或者两者一起。
@@ -203,7 +205,7 @@ lib/workspace.js       工作区引擎：扫描、增量哈希、diff、restore
 lib/conversation.js    会话侧：turn 分析、surface 替换回退
 lib/rpc.js             HTTP 传输：单一 RPC 路由 + loopback 防护
 lib/client.js          浏览器半：三个 slot、SVG 树图、详情面板、确认框
-test/                  离线测试套件（283 项断言）
+test/                  离线测试套件（288 项断言）
 ```
 
 ```powershell
@@ -218,8 +220,8 @@ node test/run.mjs
 | `engine.probe.mjs` | 65 | 检查点、回退预览、surface 回退、工作区回滚、安全备份、历史回填、回填升级、分叉分支、**多工作区覆盖**、**压缩归因**、无会话 id 自动挑选、GC |
 | `session-rewind.probe.mjs` | 25 | 对真实 `dsh-session` 的 surface 替换、独立 `foldSurface` 复核、**以及回退后日志仍能通过重放校验加载** |
 | `version-compat.probe.mjs` | 38 | 两代 `dsh-session` API 方言（日志读取、区间字段、替代节点类型、fork 前缀、方言误判的兜底重试、不可读对象的可诊断报错） |
-| `client.probe.mjs` | 81 | 模块包装契约、require 表、树布局数学（行=轮次/列=分支/分叉锚点）、真实 `react-dom/server` 渲染、动作门控、**全量 emoji 扫描** |
-| `host-mount.probe.mjs` | 36 | 插件挂载清单、真实 HTTP 往返、RPC 契约（405/415/403、确认门）、模型工具调用、turn 边界自动快照 |
+| `client.probe.mjs` | 83 | 模块包装契约、require 表、树布局数学（行=轮次/列=分支/分叉锚点）、真实 `react-dom/server` 渲染、动作门控、**全量 emoji 扫描** |
+| `host-mount.probe.mjs` | 39 | 插件挂载清单、真实 HTTP 往返、RPC 契约（405/415/403、确认门）、模型工具调用、turn 边界自动快照 |
 | `running-session.probe.mjs` | 17 | 用**应用真正加载的 `app.asar` 内那份 `dsh-session`** 跑通全流程，含重放加载 |
 
 另有两个诊断/预览工具（不在 `run.mjs` 内）：

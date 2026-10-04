@@ -364,6 +364,14 @@ for (const entry of registered) {
     check(`the ${entry.options.name} surface renders`, typeof markup === 'string' && markup.length > 0)
   }
   check(`the ${entry.options.name} surface contains no emoji`, !EMOJI.test(markup))
+  if (entry.options.name !== 'sidebar.footer.action') {
+    // Authorship must be visible and followable from the panel itself. The
+    // sidebar seat is only the trigger button, so it carries no footer.
+    check(`the ${entry.options.name} surface credits the author with a link`,
+      markup.includes('joker123-wpx')
+      && markup.includes('href="https://github.com/joker123-wpx/Deepseek-Harness-Code-revert"'),
+      JSON.stringify((markup.match(/joker123-wpx/g) ?? []).length))
+  }
 }
 
 const failed = results.filter((entry) => !entry.ok)

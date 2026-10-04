@@ -116,6 +116,19 @@ check('the plugin announces itself in the system-prompt band',
   registered.sections.length === 1 && registered.sections[0].name === 'plugin:dsh-plugin-rewind'
   && registered.sections[0].text.includes('dsh-plugin-rewind'),
   JSON.stringify(registered.sections.map((section) => section.name)))
+// Authorship travels with the plugin: metadata, the agent's system-prompt band,
+// and the tool description all name the author and link the repository.
+check('the plugin exports its author and repository',
+  host.AUTHOR?.name === 'joker123-wpx'
+  && host.AUTHOR.repository === 'https://github.com/joker123-wpx/Deepseek-Harness-Code-revert',
+  JSON.stringify(host.AUTHOR))
+check('the system-prompt band credits the author with a link',
+  registered.sections[0].text.includes('joker123-wpx')
+  && registered.sections[0].text.includes('https://github.com/joker123-wpx/Deepseek-Harness-Code-revert'))
+check('the model tool description credits the author',
+  String(registered.tools[0]?.description ?? '').includes('joker123-wpx')
+  && String(registered.tools[0]?.description ?? '').includes('Deepseek-Harness-Code-revert'),
+  String(registered.tools[0]?.description ?? '').slice(-80))
 check('every registration is owned by an effect',
   registered.effects.length >= 3 && registered.effects.every((label) => typeof label === 'string'),
   registered.effects.join(' | '))
