@@ -737,12 +737,21 @@ check('the timeline draws no branch title text',
     layout: deadGraph.layout, currentSessionId: 's1', onSelect: () => {}, t,
   }))
   // A rewound row keeps its number (so the card and the rail agree — both read the
-  // node's own turn) and gets a strike-through line over it.
+  // node's own turn) and the SAME line crosses it in both places: 1px, the same
+  // colour and the same offset, so the two read as one gesture.
   const numbers = (markup.match(/轮次/g) ?? []).length
-  check('a rewound row keeps its number, struck through, matching the rail',
-    markup.includes('rw-strike') && numbers >= 4
-    && markup.includes('轮次 1') && markup.includes('被回退的一轮'),
-    `numbers=${numbers}`)
+  const strikes = [...markup.matchAll(/<line class="rw-strike"[^>]*>/g)].map((match) => match[0])
+  const strikeY = [...markup.matchAll(/<line class="rw-strike"[^>]*y1="([\d.]+)"/g)]
+    .map((match) => match[1])
+  check('a rewound row keeps its number, struck through the same way in rail and card',
+    numbers >= 4 && markup.includes('轮次 1') && markup.includes('被回退的一轮')
+    && strikes.length === 2
+    && strikes.every((line) => line.includes('stroke-width="1"') && line.includes('opacity="0.75"'))
+    // Each line sits 4px above its own text's baseline: the rail label at y+4 and the
+    // card title at y+20 are crossed at y and y+16 respectively.
+    && strikeY.includes('96') && strikeY.includes('103')
+    && markup.includes('y="100"') && markup.includes('y="107"'),
+    `strikes=${strikes.length} y=${strikeY.join(',')}`)
 }
 // ── the graph never squeezes the rows ──────────────────────────────────────
 // Asked for: "the rail UI must not squeeze the other UI — if there are too many
