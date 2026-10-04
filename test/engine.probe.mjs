@@ -244,13 +244,19 @@ check('a second rewind of the same turn is refused', cp1After.reachable === fals
 check('a rewound row stays forkable, which is the way back to it',
   cp1After.canFork === true && cp1After.forkAtSeq !== undefined,
   JSON.stringify({ canFork: cp1After.canFork, forkAtSeq: cp1After.forkAtSeq, reachable: cp1After.reachable }))
-let refused = false
-try {
-  await engine.apply(cp1.id, { conversation: 'inplace', workspace: 'none' })
-} catch (error) {
-  refused = error.code === 'already-rewound'
-}
-check('applying the same rewind twice throws already-rewound', refused)
+// Applying the same rewind twice is a NO-OP, not a failure: the turn is already outside
+// the model-visible history, so what the request asked for is already in effect. The
+// panel used to surface this as "the queued rewind failed", which read as an error even
+// though nothing was wrong.
+const again = await engine.apply(cp1.id, { conversation: 'inplace', workspace: 'none' })
+check('applying the same rewind twice is reported as already in effect',
+  again.conversation.mode === 'none' && again.conversation.alreadyRewound === true,
+  JSON.stringify(again.conversation))
+check('and the benign case is recognised by the engine helper',
+  RewindEngine.isAlreadyRewound({ code: 'already-rewound' }) === true
+  && RewindEngine.isAlreadyRewound({ message: 'that turn has already left the model-visible history' }) === true
+  && RewindEngine.isAlreadyRewound({ code: 'session-busy' }) === false,
+  undefined)
 
 // ── backfill of historical turns ────────────────────────────────────────────
 const freshId = 'session-probe-0002'
