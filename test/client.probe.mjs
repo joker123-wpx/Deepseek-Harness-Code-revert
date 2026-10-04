@@ -818,6 +818,31 @@ check('the details pane breaks the usage down',
   && usageDetails.includes('deepseek-flash') && usageDetails.includes('31s'),
   usageDetails.slice(usageDetails.indexOf(t('usage.title')), usageDetails.indexOf(t('usage.title')) + 160))
 
+// ── the panel's own geometry is symmetrical ───────────────────────────────
+// Reported from a screenshot: the card column was anchored left, so a capped card
+// left all of the slack on the right and the panel looked uneven.
+const wideGraph = graphFor([{ id: 's1', title: '会话', live: true }], rowsOf(4).map((row) => ({
+  ...row, sessionId: 's1', manifest: true, stats: { files: 36, bytes: 801900 },
+})), { width: 1400 })
+const wideLayout = wideGraph.layout
+check('the card column is centred, so the slack is split evenly',
+  (() => {
+    const leftExtra = wideLayout.cardX - (wideLayout.railLeft + (wideLayout.laneCount - 1) * 26 + 16)
+    const rightGap = wideLayout.width - (wideLayout.cardX + wideLayout.cardW)
+    // The remaining difference is the canvas's own inset, nothing more.
+    return Math.abs(rightGap - leftExtra) <= 21
+  })(),
+  JSON.stringify({
+    cardX: wideLayout.cardX,
+    cardW: wideLayout.cardW,
+    rightGap: wideLayout.width - (wideLayout.cardX + wideLayout.cardW),
+    railLeft: wideLayout.railLeft,
+  }))
+check('a capped card stays inside the canvas on both sides',
+  wideLayout.cardW <= 760 && wideLayout.cardX + wideLayout.cardW <= wideLayout.width
+  && wideLayout.cardX >= wideLayout.railLeft,
+  JSON.stringify([wideLayout.cardX, wideLayout.cardW, wideLayout.width]))
+
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
 }))
