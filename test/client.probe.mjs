@@ -1114,6 +1114,44 @@ check('the cards keep their width however many branches there are',
     String(moduleExports.__internals.reaskAnchorFor(extended, extended.find((r) => r.afterTurn === 162), cuts)?.afterTurn))
   void withTyped
 }
+// ── a typed turn right after the replacement ends the line ─────────────────
+// Reported live: a re-ask of 150 cut turns 150–160, so its replacement turn was 161;
+// the user then TYPED turn 162 into the conversation and re-asked it — and the memory
+// came back as 149, the line's long-dead start. The interval between the replacement
+// (161) and the selection (162) is EMPTY, which the old scan misread as "the line is
+// still open". A selection past the replacement IS the line's end.
+{
+  const cuts = [{ index: 0, fromTurn: 150, toTurn: 160, count: 11 }]
+  const rows = []
+  for (let turn = 0; turn <= 162; turn += 1) {
+    rows.push({ id: `cp${turn}`, sessionId: 's1', afterTurn: turn, manifest: true, prompt: `p${turn}`, ownTurnSurfaced: true })
+  }
+  const selected = rows.find((r) => r.afterTurn === 162)
+  check('a typed turn right after the replacement ends the line',
+    moduleExports.__internals.reaskAnchorFor(rows, selected, cuts)?.afterTurn === 161,
+    String(moduleExports.__internals.reaskAnchorFor(rows, selected, cuts)?.afterTurn))
+  // The replacement turn itself still belongs to the line: re-asking 161 keeps 149.
+  check('the replacement turn still pins the line memory',
+    moduleExports.__internals.reaskAnchorFor(rows, rows.find((r) => r.afterTurn === 161), cuts)?.afterTurn === 149,
+    String(moduleExports.__internals.reaskAnchorFor(rows, rows.find((r) => r.afterTurn === 161), cuts)?.afterTurn))
+}
+// ── the chain walk never moves the line start FORWARD ──────────────────────
+// A later re-ask of an EARLIER row cuts a wider range ({140..161} after {150..160}).
+// The earlier cut's replacement (161) sits past the line start (140), so chaining to
+// it would drag the memory from 139 up to 149 — the walk must stop instead.
+{
+  const cuts = [
+    { index: 0, fromTurn: 150, toTurn: 160, count: 11 },
+    { index: 1, fromTurn: 140, toTurn: 161, count: 22 },
+  ]
+  const rows = []
+  for (let turn = 0; turn <= 162; turn += 1) {
+    rows.push({ id: `cp${turn}`, sessionId: 's1', afterTurn: turn, manifest: true, prompt: `p${turn}` })
+  }
+  check('a wider later cut keeps its own line start',
+    moduleExports.__internals.reaskAnchorFor(rows, rows.find((r) => r.afterTurn === 162), cuts)?.afterTurn === 139,
+    String(moduleExports.__internals.reaskAnchorFor(rows, rows.find((r) => r.afterTurn === 162), cuts)?.afterTurn))
+}
 // ── the confirm dialog names the turn ranges ───────────────────────────────
 // Asked for: "the prompt when rolling back is unclear — it keeps asking me about
 // earlier information". It must say which turns are kept and which are removed.

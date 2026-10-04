@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-rewind",
-  "version": "1.0.0",
+  "version": "1.0.6",
   "private": false,
   "description": "DeepSeek Harness 插件：对话回退、工作区代码回滚，以及无 emoji 的可视化检查点树图。A DeepSeek Harness plugin for conversation rewind, workspace rollback and a checkpoint tree graph.",
   "type": "module",
