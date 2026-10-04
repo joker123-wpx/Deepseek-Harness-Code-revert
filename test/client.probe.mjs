@@ -310,13 +310,13 @@ const folderize = moduleExports.__internals.folderize
 const manyRows = Array.from({ length: 14 }, (_, index) => ({ id: `r${index}`, afterTurn: index }))
 const folded = folderize(manyRows, false, 10)
 check('a long timeline folds its older rows into one inline summary',
-  folded.visible.length === 11 && folded.fold.count === 4
-  && folded.visible[0].__fold === true
-  && folded.visible[1].id === 'r4' && folded.visible[10].id === 'r13',
+  folded.visible.length === 12 && folded.fold.count === 3
+  && folded.visible[0].id === 'r0' && folded.visible[1].__fold === true
+  && folded.visible[2].id === 'r4' && folded.visible[11].id === 'r13',
   JSON.stringify({ visible: folded.visible.map((row) => row.id), fold: folded.fold }))
 check('the summary keeps the folded range and its place in the order',
-  folded.fold.turnFrom === 0 && folded.fold.turnTo === 3 && folded.fold.collapsed === true
-  && folded.visible[0].afterTurn === 0,
+  folded.fold.turnFrom === 1 && folded.fold.turnTo === 3 && folded.fold.collapsed === true
+  && folded.visible[0].afterTurn === 0 && folded.visible[1].afterTurn === 1,
   JSON.stringify(folded.fold))
 const unfolded = folderize(manyRows, true, 10)
 check('the folded rows come back in place on request',
@@ -341,11 +341,51 @@ check('the folded timeline is compact: one row pitch per visible row',
   foldRows.every((node, index) => index === 0 || node.row === foldRows[index - 1].row + 1
     && node.y - foldRows[index - 1].y === 54),
   JSON.stringify(foldRows.map((node) => [node.row, node.y])))
-check('the fold summary is its own row slot', foldRows[0].fold === true)
+check('the fold summary is its own row slot', foldRows[1].fold === true)
+check('the first row is never folded away',
+  folded.visible[0].id === 'r0' && unfolded.visible[0].id === 'r0'
+  && folded.visible.some((row) => row.id === 'r0'))
 check('a collapsed fold asks for a + control, an expanded one for a -',
   folded.fold.collapsed === true && unfolded.fold.collapsed === false)
 check('no blank space is left above the newest rows', foldLayout.height <= 54 * 12 + 80,
   String(foldLayout.height))
+
+// ── polling must not rebuild the graph ─────────────────────────────────────
+// The overview is polled every couple of seconds; when the payload carries no
+// news the previous object is kept, so the memoized layout and the SVG are left
+// alone. Without this, every poll repainted the whole timeline and folding felt
+// stuck.
+const signature = moduleExports.__internals.overviewSignature
+const basePayload = {
+  currentSessionId: 's1',
+  cwd: '/ws',
+  roots: ['/ws'],
+  sessions: [{ id: 's1', title: '会话' }],
+  checkpoints: [
+    { id: 'c1', afterTurn: 1, manifest: true, reachable: true, canFork: true },
+    { id: 'c2', afterTurn: 2, manifest: false, alreadyRewound: true },
+  ],
+}
+const identicalPayload = JSON.parse(JSON.stringify(basePayload))
+check('an unchanged payload has an unchanged signature',
+  signature(basePayload) === signature(identicalPayload))
+check('a new checkpoint changes the signature', signature(basePayload) !== signature({
+  ...basePayload,
+  checkpoints: [...basePayload.checkpoints, { id: 'c3', afterTurn: 3, manifest: true }],
+}))
+check('a flag flip changes the signature', signature(basePayload) !== signature({
+  ...basePayload,
+  checkpoints: [{ ...basePayload.checkpoints[0], alreadyRewound: true }, basePayload.checkpoints[1]],
+}))
+check('a session title change changes the signature', signature(basePayload) !== signature({
+  ...basePayload,
+  sessions: [{ id: 's1', title: '改过标题' }],
+}))
+check('a queued rewind changes the signature', signature(basePayload) !== signature({
+  ...basePayload,
+  queue: { pending: { checkpointId: 'c1', queuedAt: 1 } },
+}))
+check('an empty payload is safe to fingerprint', signature(undefined) === '')
 
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
