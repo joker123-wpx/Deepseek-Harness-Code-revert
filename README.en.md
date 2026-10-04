@@ -1,4 +1,4 @@
-# dsh-plugin-rewind
+# Dsh-Code-Revert
 
 A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin:
 **conversation rewind**, **workspace rollback**, and a **checkpoint tree graph** —
@@ -161,7 +161,7 @@ lib/conversation.js  session side: turn analysis, surface fold, rewind dialects
 lib/store.js         persistence: CAS blobs, manifests, index, trash, GC
 lib/rpc.js           transport: one RPC route with a loopback fence
 lib/client.js        browser half: three slots, SVG tree, details pane, dialogs
-test/                7 offline probes + 2 diagnostics (432 assertions)
+test/                7 offline probes + 2 diagnostics (433 assertions)
 ```
 
 ```bash

@@ -894,9 +894,15 @@ check('a wide right column never starves the turn label',
       layout: narrow, selectedId: undefined, currentSessionId: 's1', onSelect: () => {}, t,
     }))
     // The whole label has to survive, not a two-character stub.
-    return /轮次 2/.test(markup) && /126k/.test(markup)
+    return /轮次 2/.test(markup) && /126k/.test(markup) && /一个相当长的中文/.test(markup)
   })(),
-  'the turn label survives a wide right column')
+  'the turn label and prompt survive a wide right column')
+check('the prompt line carries the token counts, and the right column the full summary',
+  // Inline ends right after the counts; the right column continues with the file
+  // figure and the tool/duration parts.
+  /↓[\d.]+[kM]? token<\/text>/.test(wideMarkup)
+  && /文件 · [\d.]+ (KB|MB) · ↑[\d.]+[kM]? ↓[\d.]+[kM]? token · 3 工具/.test(wideMarkup),
+  wideMarkup.slice(Math.max(0, wideMarkup.indexOf('36 文件')), wideMarkup.indexOf('36 文件') + 80))
 
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
