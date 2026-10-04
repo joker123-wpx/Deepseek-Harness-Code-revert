@@ -895,6 +895,35 @@ check('the cards keep their width however many branches there are',
     // The branch restarts the numbering at the cut: after rewinding 10 -> 7 the new\n    // turn is 8 again, and the second cut (14 -> 13) starts the next lane at 11.\n    deadTurns.join(',') === '8,9,10,14,15,16'\n    && liveKept.join(',') === '8,9,10'\n    && newest.length > 0 && newest[0] === 11\n    && JSON.stringify(elbows) === JSON.stringify([[7, 11], [13, 17]]),
     JSON.stringify({ deadTurns, liveKept, newest: newest.slice(0, 3), elbows }))
 }
+// ── a re-ask restores the tree the turn STARTED from ───────────────────────
+// Reported with files: "3 4 5 6 → delete everything → 1 2 3", then re-asking the delete
+// step. The new prompt is applied to the tree as it was BEFORE that turn (3 4 5 6), so
+// restoring the selected row's own snapshot (the emptied tree) is wrong — the re-ask
+// must restore the anchor row above it.
+{
+  const calls = []
+  const deps = {
+    rpc: async (method, params) => {
+      calls.push([method, params.checkpointId, params.workspace, params.conversation])
+      return { ok: true, value: { workspace: { restored: 0, recreated: 0, deleted: 0, failed: [] }, conversation: { droppedTurns: [] } } }
+    },
+    forkBranch: async () => ({ ok: true }),
+    inputActions: { setDraft: () => {}, submit: () => {} },
+    t,
+  }
+  await executeRequest({
+    checkpoint: { id: 'cp-after' },
+    conversation: 'inplace',
+    workspace: 'restore',
+    reask: true,
+    reaskFrom: 'cp-before',
+    text: '把 5 改成 6',
+  }, deps)
+  check('a re-ask restores the anchor row, not the row being re-asked',
+    calls.some(([method, id, workspace]) => method === 'apply' && workspace === 'restore' && id === 'cp-before')
+    && !calls.some(([method, id, workspace]) => method === 'apply' && workspace === 'restore' && id === 'cp-after'),
+    JSON.stringify(calls))
+}
 // ── the confirm dialog names the turn ranges ───────────────────────────────
 // Asked for: "the prompt when rolling back is unclear — it keeps asking me about
 // earlier information". It must say which turns are kept and which are removed.
