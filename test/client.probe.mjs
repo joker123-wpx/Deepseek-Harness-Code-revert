@@ -371,6 +371,25 @@ check('a block header keeps its own checkpoints reachable while folded',
   twentyOne.visible[1].firstId === 'r1' && twentyOne.visible[1].lastId === 'r10'
   && twentyOne.visible[2].lastId === 'r20',
   JSON.stringify([twentyOne.visible[1].firstId, twentyOne.visible[1].lastId, twentyOne.visible[2].lastId]))
+// The header is a fold control and nothing else — no action of its own. What is
+// needed is the ordinary rewind on a row, and expanding a block turns its rows back
+// into ordinary rows, starting with the block's first one.
+const openedBlock = groupRows(rowsOf(21), new Set([1]), 10)
+const headerMarkup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
+  layout: moduleExports.__internals.graphFor([{ id: 's1', title: '会话', live: true }], openedBlock.visible, { width: 900 }).layout,
+  selectedId: undefined,
+  currentSessionId: 's1',
+  onSelect: () => {},
+  onToggleGroup: () => {},
+  t,
+}))
+check('a block header carries no action of its own',
+  !headerMarkup.includes('rw-blockact'), 'no header action button')
+check('expanding a block makes its rows ordinary, selectable rows again',
+  openedBlock.visible[1].__group === true && openedBlock.visible[2].id === 'r1'
+  && moduleExports.__internals.selectedCheckpointOf(openedBlock.visible, 'r1')?.id === 'r1'
+  && moduleExports.__internals.selectedCheckpointOf(openedBlock.visible, 'r10')?.id === 'r10',
+  JSON.stringify(openedBlock.visible.slice(0, 4).map((row) => row.id)))
 check('the block copy names its range and count',
   typeof t('panel.groupRow') === 'string' && t('panel.groupRow').includes('{count}')
   && t('panel.groupRow').includes('{from}') && t('panel.groupRow').includes('{to}'))
@@ -679,7 +698,7 @@ check('a real row still resolves, and so does an empty selection',
   selectedCheckpointOf(collapsedGraph.visible, 'g0')?.id === 'g0'
   && selectedCheckpointOf(collapsedGraph.visible, undefined) === undefined
   && selectedCheckpointOf(collapsedGraph.visible, 'nope') === undefined)
-const headerMarkup = (() => {
+const headerMarkupOld = (() => {
   const markup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
     layout: collapsedGraph.layout,
     selectedId: headerIds[0],
