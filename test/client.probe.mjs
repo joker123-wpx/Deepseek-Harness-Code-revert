@@ -875,6 +875,28 @@ check('the card right column reads "files · size · ↑in ↓out token"',
   wideMarkup.slice(Math.max(0, wideMarkup.indexOf('36 文件')), wideMarkup.indexOf('36 文件') + 90))
 check('the two token counts never use a "→" between them',
   !/[\d.]+→[\d.]+/.test(wideMarkup))
+// The usage belongs in ONE place. Appending it to the prompt line as well made the
+// left text long AND the right column wide, which squeezed the title to 「轮…」.
+check('a wide right column never starves the turn label',
+  (() => {
+    const longRows = rowsOf(3).map((row) => ({
+      ...row,
+      sessionId: 's1',
+      manifest: true,
+      prompt: '一个相当长的中文提问，用来占满左侧的可读宽度',
+      stats: { files: 36, bytes: 801900 },
+      usage: { inputTokens: 126000, outputTokens: 137000 },
+      toolCalls: 89,
+      durationMs: 478000,
+    }))
+    const { layout: narrow } = graphFor([{ id: 's1', title: '会话', live: true }], longRows, { width: 620 })
+    const markup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
+      layout: narrow, selectedId: undefined, currentSessionId: 's1', onSelect: () => {}, t,
+    }))
+    // The whole label has to survive, not a two-character stub.
+    return /轮次 2/.test(markup) && /126k/.test(markup)
+  })(),
+  'the turn label survives a wide right column')
 
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
