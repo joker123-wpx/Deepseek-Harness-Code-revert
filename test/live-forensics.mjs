@@ -154,13 +154,15 @@ const t = (key) => client.dictionaries.zh[key] ?? key
 
 const layout = client.buildLayout(overview?.sessions ?? [], overview?.checkpoints ?? [], { width: 900 })
 const selectedCheckpoint = overview?.checkpoints?.slice(-1)[0]
-const tree = ReactDOMServer.renderToStaticMarkup(React.createElement(client.TreeGraph, {
+const renderTree = (selectedId) => ReactDOMServer.renderToStaticMarkup(React.createElement(client.TreeGraph, {
   layout,
-  selectedId: selectedCheckpoint?.id,
+  selectedId,
   currentSessionId: overview?.currentSessionId,
   onSelect: () => {},
   t,
 }))
+const tree = renderTree(undefined)
+const treeSelected = renderTree(selectedCheckpoint?.id)
 const details = ReactDOMServer.renderToStaticMarkup(React.createElement(client.DetailsPane, {
   checkpoint: selectedCheckpoint,
   session: overview?.sessions?.[0],
@@ -169,17 +171,20 @@ const details = ReactDOMServer.renderToStaticMarkup(React.createElement(client.D
   onAction: () => {},
   busy: false,
   plan: undefined,
+  onClose: () => {},
 }))
 
 // A faithful static replica of the panel chrome, so the preview shows the real
 // composition (legend bar, scrolling timeline, details column, action footer)
-// rather than a detached graph.
+// rather than a detached graph. Two panels are rendered: the default state with
+// nothing selected, and the state after picking a checkpoint.
 const legendItem = (label, color) => `<span><i style="background:${color}"></i>${label}</span>`
 const legend = [
   legendItem(t('panel.legend.snapshot'), 'var(--rw-ok)'),
   legendItem(t('panel.legend.conversationOnly'), 'var(--rw-accent)'),
   legendItem(t('panel.legend.safety'), 'var(--rw-warn)'),
   legendItem(t('panel.legend.abandoned'), 'var(--rw-fg-3)'),
+  `<div class="rw-legend-hint">${t('panel.selectHint')}</div>`,
 ].join('')
 const button = (label, variant) => `<button class="rw-btn" type="button"${variant === undefined ? '' : ` data-variant="${variant}"`}>${label}</button>`
 const roots = overview?.roots ?? []
@@ -198,6 +203,17 @@ const footer = `<div class="rw-foot">
   <span class="rw-mono">rewind/v1</span>
   ${button(t('action.close'), 'quiet')}
 </div>`
+const panel = (graph, side) => `<div class="drawer">
+  ${header}
+  <div class="body">
+    <div class="graph">
+      <div class="rw-legend">${legend}</div>
+      <div class="scroll">${graph}</div>
+    </div>
+    ${side}
+  </div>
+  ${footer}
+</div>`
 
 const previewDir = join(here, '..', 'preview')
 await fs.mkdir(previewDir, { recursive: true })
@@ -207,31 +223,25 @@ const html = `<!doctype html>
 <style>
 html,body{height:100%}
 body{margin:0;background:#101013;color:#f2f2f3;font:13px/20px system-ui,'Segoe UI',sans-serif}
-.page{padding:16px;display:flex;flex-direction:column;gap:10px;height:calc(100% - 32px)}
-h1{font-size:15px;margin:0}
-p{margin:0;color:#84848c;font-size:12px}
-.drawer{flex:1 1 auto;min-height:560px;height:min(760px,calc(100vh - 120px));width:100%;max-width:1240px;background:var(--rw-bg);border:1px solid var(--rw-line);border-radius:12px;display:flex;flex-direction:column;overflow:hidden}
+.page{padding:16px 16px 24px 16px;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
+h1{font-size:15px;margin:0;align-self:flex-start}
+p{margin:0 0 6px 0;color:#84848c;font-size:12px;align-self:flex-start}
+.caption{color:#84848c;font-size:12px;align-self:flex-end}
+.drawer{height:620px;width:min(1240px,100%);background:var(--rw-bg);border:1px solid var(--rw-line);border-radius:12px;display:flex;flex-direction:column;overflow:hidden}
 .body{display:flex;flex:1 1 auto;min-height:0}
 .graph{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;background:var(--rw-bg-2)}
 .scroll{flex:1 1 auto;min-height:0;overflow:auto}
-.side{flex:0 0 340px;border-left:1px solid var(--rw-line);padding:14px;overflow:auto;background:var(--rw-bg)}
+.side{flex:0 0 336px;border-left:1px solid var(--rw-line);padding:12px 14px 16px 14px;overflow:auto;background:var(--rw-bg)}
 ${client.css ?? ''}
 </style></head>
 <body><div class="page rw-root">
 <h1>对话回退 / 工作区回滚 — 面板预览</h1>
 <p>由 test/live-forensics.mjs 用真实检查点数据渲染（react-dom/server + 插件自身的样式表），不是运行中的界面截图。</p>
-<div class="drawer">
-  ${header}
-  <div class="body">
-    <div class="graph">
-      <div class="rw-legend">${legend}</div>
-      <div class="scroll">${tree}</div>
-    </div>
-    <div class="side">${details}</div>
-  </div>
-  ${footer}
-</div>
+<div class="caption">默认状态：只有时间线，详情不显示（点选检查点才出现）</div>
+${panel(tree, '')}
+<div class="caption">选中某个检查点后：右侧出现详情，点空白处或 × 收起</div>
+${panel(treeSelected, `<div class="side">${details}</div>`)}
 </div></body></html>`
 await fs.writeFile(outPath, html, 'utf8')
 console.log(`preview written: ${outPath}`)
-console.log(`tree markup: ${tree.length} bytes, nodes=${(tree.match(/class="rw-node"/g) ?? []).length}, lanes=${(layout.lanes ?? []).length}, rows=${(layout.rows ?? []).length}, cardW=${layout.cardW}`)
+console.log(`tree markup: ${tree.length} bytes, nodes=${(tree.match(/class="rw-node"/g) ?? []).length}, lanes=${(layout.lanes ?? []).length}, rows=${(layout.rows ?? []).length}, cardX=${layout.cardX}, cardW=${layout.cardW}`)

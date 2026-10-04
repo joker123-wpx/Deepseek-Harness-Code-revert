@@ -126,6 +126,12 @@ check('exactly the selected row is highlighted', selectedRects === 1, String(sel
 check('the selected row is the one asked for', /class="rw-selected"[\s\S]*?<\/g>/.test(tree)
   || tree.includes('rw-selected'))
 check('row cards fill the graph viewport', layout.cardW >= 400, String(layout.cardW))
+check('every card starts in the card column, clear of the gutter', layout.nodes.every((node) => node.x === layout.cardX),
+  JSON.stringify(layout.nodes.map((node) => node.x)))
+check('the turn gutter sits left of the first rail', layout.nodes.every((node) => node.railX > 0) && layout.cardX > 0,
+  JSON.stringify({ cardX: layout.cardX, railX: layout.nodes[0].railX, gutterRight: 20 + 64 - 16 }))
+check('the timeline is inset from the panel edge', layout.nodes[0].railX > 40 && layout.cardX >= 100,
+  JSON.stringify({ railX: layout.nodes[0].railX, cardX: layout.cardX }))
 check('no card overflows the canvas', layout.cardX + layout.cardW <= layout.width,
   JSON.stringify({ cardX: layout.cardX, cardW: layout.cardW, width: layout.width }))
 check('every row sits on its own 54px pitch',
@@ -133,6 +139,41 @@ check('every row sits on its own 54px pitch',
   JSON.stringify(layout.nodes.map((node) => [node.row, node.y])))
 check('node labels show the turn', tree.includes('Turn 1') || tree.includes('轮次 1') || tree.includes('Turn'), tree.slice(0, 120))
 check('the rendered tree contains no emoji', !EMOJI.test(tree), (tree.match(EMOJI) ?? [''])[0])
+
+// ── dismissal: selecting must not be undone by the canvas handler ──────────
+// TreeGraph itself is hook-free, so the element tree can be inspected directly
+// and its handlers invoked — markup alone cannot show click wiring.
+function walk(element, visit) {
+  if (element === null || element === undefined || typeof element !== 'object') return
+  if (Array.isArray(element)) {
+    for (const child of element) walk(child, visit)
+    return
+  }
+  visit(element)
+  walk(element.props?.children, visit)
+}
+const events = []
+const treeElement = moduleExports.TreeGraph({
+  layout,
+  selectedId: 'cp1',
+  currentSessionId: 'session-root',
+  onSelect: (id) => events.push(['select', id]),
+  t,
+})
+const groups = []
+walk(treeElement, (element) => {
+  if (element.props?.className === 'rw-node') groups.push(element)
+})
+check('the canvas clears the selection when empty space is clicked',
+  typeof treeElement.props.onClick === 'function')
+treeElement.props.onClick()
+check('clicking the canvas reports an empty selection',
+  JSON.stringify(events.pop()) === JSON.stringify(['select', undefined]), JSON.stringify(events))
+let stopped = false
+groups[0].props.onClick({ stopPropagation: () => { stopped = true } })
+check('selecting a row stops the canvas from clearing it', stopped
+  && JSON.stringify(events.pop()) === JSON.stringify(['select', groups[0].key]),
+  JSON.stringify({ stopped, last: events.slice(-1) }))
 
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
