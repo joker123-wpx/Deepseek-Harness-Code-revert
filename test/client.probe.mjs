@@ -962,6 +962,23 @@ check('the cards keep their width however many branches there are',
   check('a re-ask never restores from a greyed row',
     picked?.id === 'cp82', JSON.stringify(picked?.id))
 }
+// ── the reported rule, end to end ──────────────────────────────────────────
+// "Click a turn and re-ask from the row before it; re-ask again (the same row or the new
+// one) and the memory stays that row's pre-state." 104 was rolled back to 100, re-asked
+// into 105, and re-asking 105 must STILL restore 100 — every re-asked row is skipped.
+{
+  const rows = [
+    { id: 'cp100', sessionId: 's1', afterTurn: 100, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'a' },
+    { id: 'cp104', sessionId: 's1', afterTurn: 104, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'b', ownTurnRewound: true },
+    { id: 'cp105', sessionId: 's1', afterTurn: 105, manifest: false, canRestoreWorkspace: false, reachable: true, prompt: 'c' },
+  ]
+  const liveIds = new Set(['cp100', 'cp105'])
+  const pick = (target) => moduleExports.__internals.restoreAnchorFor(
+    rows.filter((row) => liveIds.has(row.id) && row.ownTurnRewound !== true), target)?.id
+  check('re-asking the new turn keeps the same memory',
+    pick(rows[2]) === 'cp100' && pick({ ...rows[2], id: 'cp106', afterTurn: 106 }) === 'cp100',
+    JSON.stringify({ first: pick(rows[2]), second: pick({ ...rows[2], id: 'cp106', afterTurn: 106 }) }))
+}
 // ── the confirm dialog names the turn ranges ───────────────────────────────
 // Asked for: "the prompt when rolling back is unclear — it keeps asking me about
 // earlier information". It must say which turns are kept and which are removed.
