@@ -112,7 +112,7 @@ check('a safety backup sits between turns',
     uniqueRows: new Set(layout.nodes.map((node) => node.row)).size,
     nodes: layout.nodes.length,
   }))
-check('chain edges connect consecutive checkpoints', layout.edges.filter((edge) => edge.kind === 'chain' && edge.from.checkpoint.sessionId === 'session-root').length === 3)
+check('chain edges connect consecutive rows within a lane', layout.edges.filter((edge) => edge.kind === 'chain' && edge.from.checkpoint.sessionId === 'session-root').length === 2)
 const forkEdge = layout.edges.find((edge) => edge.kind === 'fork')
 check('the fork edge is anchored at the checkpoint whose turn end matches the seed length',
   forkEdge !== undefined && forkEdge.from.checkpoint.id === 'cp1' && forkEdge.to.checkpoint.id === 'cp4',
@@ -255,18 +255,22 @@ const forkLayout = moduleExports.buildLayout([{ id: 's1', title: '会话', live:
 const forkNode = (id) => forkLayout.nodes.find((node) => node.checkpoint.id === id)
 check('the abandoned run keeps its own lane and is marked dead',
   forkNode('f6').dead === true && forkNode('f9').dead === true && forkNode('f5').dead !== true)
-check('the live continuation moves to a new lane on the right',
-  forkNode('f10').column > forkNode('f5').column && forkNode('f10').railX > forkNode('f5').railX,
-  JSON.stringify([forkNode('f5').column, forkNode('f10').column, forkNode('f5').railX, forkNode('f10').railX]))
-check('a connector runs from the rewind point to the new node',
+check('the removed run hangs off the trunk: survivors keep the current line',
+  // The trunk (lane 0) carries every survivor; the removed run gets the lane to its
+  // right, so the live path stays one unbroken line.
+  forkNode('f6').column > forkNode('f5').column
+  && forkNode('f10').column === forkNode('f5').column
+  && forkNode('f10').dead !== true && forkNode('f5').dead !== true,
+  JSON.stringify([forkNode('f5')?.column, forkNode('f6')?.column, forkNode('f10')?.column]))
+check('a connector hangs the removed run off the row it was cut from',
   forkLayout.edges.some((edge) => edge.kind === 'fork' && edge.surface === true
-    && edge.from.checkpoint.id === 'f5' && edge.to.checkpoint.id === 'f10'),
+    && edge.from.checkpoint.id === 'f5' && edge.to.dead === true),
   JSON.stringify(forkLayout.edges.filter((edge) => edge.kind === 'fork')
     .map((edge) => [edge.from.checkpoint.id, edge.to.checkpoint.id, edge.surface === true])))
-check('the dead run is counted on its lane, and the new lane is flagged',
+check('the removed run is counted on its own lane',
   forkLayout.lanes.some((lane) => lane.rewound === 4)
-  && forkLayout.lanes.some((lane) => lane.newBranch === true && lane.dead !== true),
-  JSON.stringify(forkLayout.lanes.map((lane) => [lane.column, lane.dead, lane.newBranch, lane.rewound, lane.chip])))
+  && forkLayout.lanes.filter((lane) => lane.dead === true).length >= 1,
+  JSON.stringify(forkLayout.lanes.map((lane) => [lane.column, lane.dead, lane.rewound])))
 check('no branch chip is labelled by a badge: the branch name is the label',
   forkLayout.lanes.every((lane) => !String(lane.chip).includes(t('badge.newBranch'))
     && !String(lane.chip).includes(t('badge.current'))))
@@ -778,10 +782,10 @@ check('the timeline draws no branch title text',
     .filter((node) => node.column === column)
     .sort((a, b) => a.turn - b.turn)
     .map((node) => `${node.turn}${node.dead === true ? '*' : ''}`)
-  check('a continuation keeps counting after the cut, and only cut rows are grey',
-    lane(1).join(' ') === '10 11 12* 13* 14*'
-    && lane(2).join(' ') === '15 16 17 18'
-    && lane(0).join(' ') === '0 1 2 3 4 5 6* 7* 8* 9*',
+  check('the survivors form one line and each cut hangs off it',
+    lane(0).join(' ') === '0 1 2 3 4 5 10 11 15 16 17 18'
+    && lane(1).join(' ') === '6* 7* 8* 9*'
+    && lane(2).join(' ') === '12* 13* 14*',
     JSON.stringify({ trunk: lane(0), first: lane(1), second: lane(2) }))
 }
 // ── "shows as rewound" and "is rewound" must be the same flag ───────────────
@@ -831,9 +835,8 @@ check('the timeline draws no branch title text',
   const bold = gutters.filter((tag) => tag.includes('font-weight="700"'))
   const dim = gutters.filter((tag) => tag.includes('var(--rw-fg-3)'))
   check('the live branch number is bold white and the rewound one is not',
-    // Three gutter labels: the anchor, the rewound row and the head. Only the head is
-    // bold white; the two history rows stay dim.
-    bold.length === 1 && dim.length === 2
+    // The trunk (live rows) is bold white; the removed runs are dim.
+    bold.length >= 1 && dim.length === 1
     && bold[0].includes('var(--rw-fg)'),
     JSON.stringify({ gutters: gutters.length, bold: bold.length, dim: dim.length }))
 }
