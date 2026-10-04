@@ -214,6 +214,47 @@ check('a turn whose user message is off the surface cannot be re-asked',
   || anchorFor([{ ...anchorRows[1], reachable: false }, anchorRows[2]], anchorRows[2]) === undefined,
   JSON.stringify(anchorFor([{ ...anchorRows[1], reachable: false }, anchorRows[2]], anchorRows[2])))
 
+// ── a rewind must read as a fork, not as one straight line ────────────────
+// The abandoned run keeps its lane as dead wood; the live continuation moves to
+// its own lane and a connector runs from the last live row before the cut to the
+// new node. Without that, a rewound conversation looks like nothing happened.
+const forkRows = []
+for (let turn = 0; turn <= 5; turn += 1) {
+  forkRows.push({ id: `f${turn}`, sessionId: 's1', afterTurn: turn, kind: 'auto', manifest: true, prompt: `q${turn}` })
+}
+for (let turn = 6; turn <= 9; turn += 1) {
+  forkRows.push({ id: `f${turn}`, sessionId: 's1', afterTurn: turn, kind: 'auto', manifest: true, prompt: `q${turn}`, ownTurnRewound: true, abandoned: true })
+}
+forkRows.push({ id: 'f10', sessionId: 's1', afterTurn: 10, kind: 'auto', manifest: true, prompt: '改写的提问', hasNextTurn: false })
+const forkLayout = moduleExports.buildLayout([{ id: 's1', title: '会话', live: true }], forkRows, { width: 900 })
+const forkNode = (id) => forkLayout.nodes.find((node) => node.checkpoint.id === id)
+check('the abandoned run keeps its own lane and is marked dead',
+  forkNode('f6').dead === true && forkNode('f9').dead === true && forkNode('f5').dead !== true)
+check('the live continuation moves to a new lane on the right',
+  forkNode('f10').column > forkNode('f5').column && forkNode('f10').railX > forkNode('f5').railX,
+  JSON.stringify([forkNode('f5').column, forkNode('f10').column, forkNode('f5').railX, forkNode('f10').railX]))
+check('a connector runs from the rewind point to the new node',
+  forkLayout.edges.some((edge) => edge.kind === 'fork' && edge.surface === true
+    && edge.from.checkpoint.id === 'f5' && edge.to.checkpoint.id === 'f10'),
+  JSON.stringify(forkLayout.edges.filter((edge) => edge.kind === 'fork')
+    .map((edge) => [edge.from.checkpoint.id, edge.to.checkpoint.id, edge.surface === true])))
+check('the dead run is counted on its lane, and the new lane is flagged',
+  forkLayout.lanes.some((lane) => lane.rewound === 4)
+  && forkLayout.lanes.some((lane) => lane.newBranch === true && lane.dead !== true),
+  JSON.stringify(forkLayout.lanes.map((lane) => [lane.column, lane.dead, lane.newBranch, lane.rewound, lane.chip])))
+check('the new lane is labelled as the branch after a rewind',
+  forkLayout.lanes.some((lane) => String(lane.chip).includes(t('badge.newBranch'))))
+const forkTree = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
+  layout: forkLayout, selectedId: undefined, currentSessionId: 's1', onSelect: () => {}, t,
+}))
+check('the rendered fork draws the surface connector and a dashed dead rail',
+  forkTree.includes('rw-fork-surface') && forkTree.includes('rw-rail-dead'))
+check('the abandoned rows carry the rewound badge',
+  (forkTree.match(new RegExp(t('badge.rewound'), 'g')) ?? []).length >= 4)
+check('the fork canvas fits both lanes', forkLayout.width >= forkLayout.cardX + forkLayout.cardW,
+  JSON.stringify({ width: forkLayout.width, cardX: forkLayout.cardX, cardW: forkLayout.cardW }))
+check('the fork rendering contains no emoji', !EMOJI.test(forkTree))
+
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
 }))

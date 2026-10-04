@@ -189,16 +189,20 @@ const details = ReactDOMServer.renderToStaticMarkup(React.createElement(client.D
 // abandoning several turns looks like. This is a rendered example of the
 // resulting data shape, not a capture of a live rewind.
 const forkable = (overview?.checkpoints ?? []).filter((checkpoint) => checkpoint.canFork === true)
-const rewindTarget = forkable[Math.floor(forkable.length / 2)]
+// The turn the user redoes: the next turn of a middle row, so the example shows
+// a multi-turn abandonment. Its own prompt is the one being edited, and the row
+// above it (the previous turn's checkpoint) is the rewind anchor — exactly what
+// the panel's gold button does.
+const redoTarget = forkable[Math.floor(forkable.length / 2)]
 const lastTurn = (overview?.checkpoints ?? []).reduce((max, checkpoint) => Math.max(max, checkpoint.afterTurn ?? 0), 0)
-const rewindFromTurn = rewindTarget === undefined ? undefined : (rewindTarget.afterTurn ?? 0) + 1
+const rewindFromTurn = redoTarget === undefined ? undefined : (redoTarget.afterTurn ?? 0) + 1
 const newTurn = lastTurn + 1
-const editedPrompt = rewindTarget === undefined
+const editedPrompt = redoTarget === undefined
   ? ''
-  : `${String(rewindTarget.prompt ?? '').trim()}（这次先给结论，再给步骤，并附一个最小复现）`
+  : `${String((overview.checkpoints.find((checkpoint) => checkpoint.afterTurn === rewindFromTurn) ?? redoTarget).prompt ?? '').trim()}（这次先给结论，再给步骤，并附一个最小复现）`
 const abandonedTurns = []
 for (let turn = rewindFromTurn ?? 0; turn <= lastTurn; turn += 1) abandonedTurns.push(turn)
-const afterRewind = rewindTarget === undefined ? undefined : {
+const afterRewind = redoTarget === undefined ? undefined : {
   ...overview,
   checkpoints: [
     ...overview.checkpoints.map((checkpoint) => {
@@ -207,31 +211,27 @@ const afterRewind = rewindTarget === undefined ? undefined : {
       // A turn the rewind folded away: this checkpoint can no longer be rewound.
       // Only an exact integer turn matches, exactly as the host resolves it, so a
       // backup row at turn+0.5 is not dragged into the abandoned branch.
-      if (Number.isInteger(afterTurn) && nextTurn >= rewindFromTurn && nextTurn <= lastTurn) {
-        return {
-          ...checkpoint,
-          alreadyRewound: true,
-          compacted: false,
-          promptReplaced: false,
-          replacedByOther: false,
-          reachable: false,
-          abandoned: true,
-          canFork: false,
-          hasNextTurn: false,
-        }
+      const cutsNext = Number.isInteger(afterTurn) && nextTurn >= rewindFromTurn && nextTurn <= lastTurn
+      // A row that itself stands for a folded-away turn is dead wood, even when a
+      // later turn (the appended one) makes its next slot live again.
+      const insideRun = Number.isInteger(afterTurn) && afterTurn >= rewindFromTurn && afterTurn <= lastTurn
+      if (!cutsNext && !insideRun) return checkpoint
+      return {
+        ...checkpoint,
+        ...(cutsNext
+          ? {
+            alreadyRewound: true,
+            compacted: false,
+            promptReplaced: false,
+            replacedByOther: false,
+            reachable: false,
+            canFork: false,
+            hasNextTurn: false,
+          }
+          : {}),
+        ...(insideRun ? { ownTurnRewound: true, ownTurnSurfaced: false } : {}),
+        abandoned: true,
       }
-      // The checkpoint sitting just before the new turn becomes rewindable again.
-      if ((checkpoint.afterTurn ?? 0) === lastTurn) {
-        return {
-          ...checkpoint,
-          alreadyRewound: false,
-          reachable: true,
-          abandoned: false,
-          canFork: true,
-          hasNextTurn: true,
-        }
-      }
-      return checkpoint
     }),
     {
       id: 'cp-example-after-rewind',
@@ -378,8 +378,12 @@ if (afterRewind !== undefined) {
   for (const checkpoint of afterRewind.checkpoints) {
     const state = checkpoint.kind === 'safety'
       ? 'backup'
-      : checkpoint.alreadyRewound === true ? 'REWOUND' : checkpoint.hasNextTurn === true ? 'rewindable' : 'tail'
-    const prompt = String(checkpoint.prompt ?? '').replace(/\s+/g, ' ').slice(0, 42)
-    console.log(`   turn ${String(checkpoint.afterTurn).padEnd(4)} ${state.padEnd(11)} ${prompt}`)
+      : checkpoint.ownTurnRewound === true
+        ? 'dead-wood'
+        : checkpoint.alreadyRewound === true
+          ? 'cut-here'
+          : checkpoint.hasNextTurn === true ? 'rewindable' : 'tail'
+    const prompt = String(checkpoint.prompt ?? '').replace(/\s+/g, ' ').slice(0, 40)
+    console.log(`   turn ${String(checkpoint.afterTurn).padEnd(5)} ${state.padEnd(11)} ${prompt}`)
   }
 }
