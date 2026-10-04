@@ -753,6 +753,37 @@ check('the timeline draws no branch title text',
     && markup.includes('y="100"') && markup.includes('y="107"'),
     `strikes=${strikes.length} y=${strikeY.join(',')}`)
 }
+// ── the numbering is the log's, and grey means "a cut removed it" ──────────
+// Asked for: 1..9, rewind to 5 → the continuation is 10 11 12 13 14 (6 7 8 9 grey);
+// then rewind to 11 → 15 16 17 18 (6 7 8 9 12 13 14 grey). Two things have to hold:
+// a branch keeps counting after the cut, and the rows an EARLIER branch kept are not
+// greyed out — the host's cumulative `abandoned` flag marks those too.
+{
+  const logRows = []
+  const add = (turn, abandoned) => logRows.push({
+    id: `cp${turn}`, sessionId: 's1', afterTurn: turn, manifest: true, prompt: `p${turn}`,
+    abandoned, ownTurnRewound: false,
+  })
+  for (let turn = 0; turn <= 9; turn += 1) add(turn, turn >= 6)
+  for (let turn = 10; turn <= 14; turn += 1) add(turn, turn >= 12)
+  for (let turn = 15; turn <= 18; turn += 1) add(turn, false)
+  const logSessions = [{
+    id: 's1',
+    title: '会话',
+    live: true,
+    cuts: [{ index: 0, fromTurn: 6, toTurn: 9, count: 4 }, { index: 1, fromTurn: 12, toTurn: 14, count: 3 }],
+  }]
+  const logGraph = graphFor(logSessions, logRows, { width: 1200, limit: 10 ** 9 })
+  const lane = (column) => logGraph.layout.nodes
+    .filter((node) => node.column === column)
+    .sort((a, b) => a.turn - b.turn)
+    .map((node) => `${node.turn}${node.dead === true ? '*' : ''}`)
+  check('a continuation keeps counting after the cut, and only cut rows are grey',
+    lane(1).join(' ') === '10 11 12* 13* 14*'
+    && lane(2).join(' ') === '15 16 17 18'
+    && lane(0).join(' ') === '0 1 2 3 4 5 6* 7* 8* 9*',
+    JSON.stringify({ trunk: lane(0), first: lane(1), second: lane(2) }))
+}
 // ── the newest branch's numbers are bold white ─────────────────────────────
 // Asked for: "the new turn's rail number should be bold white type". The lane the
 // conversation is on is the only one that is not history, so its numbers are the only
