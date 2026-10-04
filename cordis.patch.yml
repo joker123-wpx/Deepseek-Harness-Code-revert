@@ -1,0 +1,17 @@
+# dsh-plugin-rewind — profile layer patch.
+#
+# Installing this package as a profile bundle applies the row below, which
+# mounts BOTH halves of the plugin:
+#
+#   * the host row (`dsh-plugin-rewind` -> lib/index.js) mounts the checkpoint
+#     store, the rollback engine, the same-origin RPC route /dsh-rewind/rpc, the
+#     turn-boundary snapshot hooks and the optional model tool;
+#   * because the package declares `dsh.client.platform = "web"` and exports
+#     "./client", the same row is also scanned into the browser roster by the
+#     `modules` node half, which serves lib/client.js from
+#     /plugins/dsh-plugin-rewind/client.js and hands it to the page.
+#
+# One row, two halves — the same shape every shipped dual-face plugin uses.
+- insert:
+    - id: rewind
+      name: 'dsh-plugin-rewind'

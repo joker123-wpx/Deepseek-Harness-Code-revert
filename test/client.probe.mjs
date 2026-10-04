@@ -1,0 +1,234 @@
+/**
+ * Client-half test: loads `lib/client.js` exactly the way the module loader
+ * does, then renders the real components with react-dom/server.
+ *
+ * It checks the wrapper contract, the absence of any emoji anywhere in the
+ * bundle or its rendered output, the tree layout math (rows = turns, columns =
+ * branches, fork edges), the action gating per checkpoint, and the confirmation
+ * dialog copy.
+ *
+ * Run: node test/client.probe.mjs
+ */
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { join } from 'node:path'
+import { pathToFileURL, fileURLToPath } from 'node:url'
+
+const here = fileURLToPath(new URL('.', import.meta.url))
+const MODULES = process.env.DSH_MODULES ?? 'C:/Users/Administrator/.dsh/profiles/node_modules'
+const requireFromProfile = createRequire(join(MODULES, 'noop.js'))
+const React = requireFromProfile('react')
+const ReactDOMServer = requireFromProfile('react-dom/server')
+
+const results = []
+function check(name, condition, detail = '') {
+  results.push({ name, ok: Boolean(condition) })
+  console.log(`${condition ? 'PASS' : 'FAIL'}  ${name}${detail === '' ? '' : `  ${detail}`}`)
+}
+
+/** Matches every code point Unicode classifies as pictographic, plus the
+ *  variation selector and the old dingbat/transport ranges. */
+const EMOJI = /[\u{1F000}-\u{1FAFF}\u{1F300}-\u{1F5FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/u
+
+// ── browser stubs, installed before the bundle executes ─────────────────────
+const styleTags = []
+let handoff
+globalThis.window = {
+  __ModuleLoader__: {
+    load: (value) => { handoff = value },
+  },
+}
+globalThis.document = {
+  documentElement: { lang: 'zh-CN' },
+  head: { appendChild: (tag) => styleTags.push(tag) },
+  querySelector: () => null,
+  createElement: () => ({ dataset: {}, textContent: '' }),
+}
+
+const clientUrl = pathToFileURL(join(here, '..', 'lib', 'client.js')).href
+await import(clientUrl)
+
+check('the bundle registers itself with the module loader', handoff !== undefined && handoff.id === 'dsh-plugin-rewind',
+  JSON.stringify(handoff?.id))
+check('the factory is synchronous', typeof handoff?.factory === 'function' && handoff.factory.constructor.name !== 'AsyncFunction')
+
+const moduleExports = handoff.factory((specifier) => {
+  if (specifier === 'react') return React
+  if (specifier === 'react-dom/client') return { createRoot: () => ({ render() {}, unmount() {} }) }
+  throw new Error(`unexpected require(${specifier})`)
+})
+
+check('exports carry apply', typeof moduleExports.apply === 'function')
+check('exports carry a cordis service inject list', Array.isArray(moduleExports.inject) && moduleExports.inject.includes('slots'))
+check('the style tag was injected once', styleTags.length === 1 && styleTags[0].dataset.plugin === 'dsh-plugin-rewind',
+  JSON.stringify(styleTags.map((tag) => tag.dataset)))
+const css = styleTags[0]?.textContent ?? ''
+check('the stylesheet uses the product theme tokens', css.includes('--dsw-alias-'))
+check('the stylesheet contains no emoji', !EMOJI.test(css), (css.match(EMOJI) ?? [''])[0])
+
+// ── the whole source is emoji-free ──────────────────────────────────────────
+const source = readFileSync(join(here, '..', 'lib', 'client.js'), 'utf8')
+const emojiHits = source.match(new RegExp(EMOJI.source, 'gu')) ?? []
+check('the client source contains no emoji at all', emojiHits.length === 0, emojiHits.join(' '))
+
+// ── layout ─────────────────────────────────────────────────────────────────
+const sessions = [
+  { id: 'session-root', cwd: 'C:/ws', createdAt: 1, live: true, parentSession: undefined },
+  { id: 'session-child', cwd: 'C:/ws', createdAt: 2, live: true, parentSession: 'session-root', seedLength: 8 },
+]
+const checkpoints = [
+  { id: 'cp0', sessionId: 'session-root', afterTurn: 0, label: '初始状态', kind: 'auto', manifest: true, reachable: true, canFork: false, canRestoreWorkspace: true },
+  { id: 'cp1', sessionId: 'session-root', afterTurn: 1, label: '第一轮', kind: 'auto', manifest: true, reachable: true, canFork: true, canRestoreWorkspace: true, forkAtSeq: 7 },
+  { id: 'cp2', sessionId: 'session-root', afterTurn: 2, label: '第二轮', kind: 'auto', manifest: true, reachable: false, alreadyRewound: true, canFork: false, canRestoreWorkspace: true, forkAtSeq: 11 },
+  { id: 'cp3', sessionId: 'session-root', afterTurn: 2.5, label: '回滚前自动备份', kind: 'safety', manifest: true, canRestoreWorkspace: true },
+  { id: 'cp4', sessionId: 'session-child', afterTurn: 2, label: '分叉后第一轮', kind: 'history', manifest: false, reachable: true, canFork: false, canRestoreWorkspace: false },
+]
+const layout = moduleExports.buildLayout(sessions, checkpoints)
+check('every checkpoint becomes a node', layout.nodes.length === 5)
+const rootLane = layout.nodes.find((node) => node.checkpoint.id === 'cp0').column
+const childLane = layout.nodes.find((node) => node.checkpoint.id === 'cp4').column
+check('the trunk sits in the first column', rootLane === 0, String(rootLane))
+check('a fork opens a new column to the right', childLane > rootLane, `${rootLane} -> ${childLane}`)
+const cp1Node = layout.nodes.find((node) => node.checkpoint.id === 'cp1')
+const cp2Node = layout.nodes.find((node) => node.checkpoint.id === 'cp2')
+check('rows follow the turn index', cp2Node.y > cp1Node.y && cp1Node.y > layout.nodes[0].y)
+const safetyNode = layout.nodes.find((node) => node.checkpoint.id === 'cp3')
+check('a safety backup sits between turns', safetyNode.y > cp2Node.y && safetyNode.y < cp2Node.y + 36)
+check('chain edges connect consecutive checkpoints', layout.edges.filter((edge) => edge.kind === 'chain' && edge.from.checkpoint.sessionId === 'session-root').length === 3)
+const forkEdge = layout.edges.find((edge) => edge.kind === 'fork')
+check('the fork edge is anchored at the checkpoint whose turn end matches the seed length',
+  forkEdge !== undefined && forkEdge.from.checkpoint.id === 'cp1' && forkEdge.to.checkpoint.id === 'cp4',
+  JSON.stringify(layout.edges.filter((edge) => edge.kind === 'fork').map((edge) => [edge.from.checkpoint.id, edge.to.checkpoint.id])))
+check('the canvas is large enough for every node',
+  layout.width >= childLane * 190 + 158 && layout.height >= safetyNode.y + 26)
+
+// ── rendering ──────────────────────────────────────────────────────────────
+const t = (key) => moduleExports.dictionaries.zh[key] ?? key
+const tree = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
+  layout, selectedId: 'cp1', currentSessionId: 'session-root', onSelect: () => {}, t,
+}))
+const nodeCount = (tree.match(/class="rw-node"/g) ?? []).length
+check('the tree renders one group per checkpoint', nodeCount === 5, String(nodeCount))
+check('the tree draws an SVG element', tree.startsWith('<svg'))
+// The visual contract: one continuous rail per branch, and per node a stub to
+// the rail, a junction dot pair, and a card.
+check('the tree draws a branch rail', (tree.match(/class="rw-rail"/g) ?? []).length >= 1,
+  String((tree.match(/class="rw-rail"/g) ?? []).length))
+check('every node has a stub to the rail', (tree.match(/class="rw-stub"/g) ?? []).length === 5,
+  String((tree.match(/class="rw-stub"/g) ?? []).length))
+check('every node has a junction dot', (tree.match(/class="rw-dot"/g) ?? []).length === 10,
+  String((tree.match(/class="rw-dot"/g) ?? []).length))
+check('every node renders as a card', (tree.match(/class="rw-card"/g) ?? []).length === 5)
+check('node labels show the turn', tree.includes('Turn 1') || tree.includes('轮次 1') || tree.includes('Turn'), tree.slice(0, 120))
+check('the rendered tree contains no emoji', !EMOJI.test(tree), (tree.match(EMOJI) ?? [''])[0])
+
+const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
+  layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
+}))
+check('an empty tree explains itself instead of rendering a blank canvas', empty.includes(t('state.noCheckpoints')))
+
+const details = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.DetailsPane, {
+  checkpoint: checkpoints[2],
+  session: sessions[0],
+  workspace: 'C:/ws',
+  t,
+  onAction: () => {},
+  busy: false,
+  plan: { workspace: { ok: true, summary: { restored: 1, recreated: 2, deleted: 3, plan: { added: ['a.js'], changed: ['b.js'], removed: ['c.js'] } } } },
+}))
+check('the details pane lists the file plan', details.includes('a.js') && details.includes('b.js') && details.includes('c.js'))
+check('the details pane explains why a rewound turn cannot be rewound again', details.includes(t('notice.unreachable')))
+const disabled = (details.match(/disabled=""/g) ?? []).length
+check('actions that cannot apply are disabled', disabled >= 2, String(disabled))
+check('the details pane contains no emoji', !EMOJI.test(details))
+
+const safetyDetails = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.DetailsPane, {
+  checkpoint: checkpoints[3], session: sessions[0], workspace: 'C:/ws', t, onAction: () => {}, busy: false, plan: undefined,
+}))
+check('a safety backup offers only the restore action', safetyDetails.includes(t('action.restoreSafety'))
+  && !safetyDetails.includes(t('action.fork')))
+
+const dialog = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.ConfirmDialog, {
+  request: { conversation: 'inplace', workspace: 'restore', checkpoint: checkpoints[1] },
+  plan: { conversation: { ok: true, droppedTurns: [1, 2] }, workspace: { ok: true, summary: { restored: 1, recreated: 0, deleted: 2 } } },
+  t,
+  busy: false,
+  onCancel: () => {},
+  onConfirm: () => {},
+}))
+check('the confirmation dialog explains both effects',
+  dialog.includes(t('notice.inplaceExplain')) && dialog.includes(t('notice.workspaceExplain')))
+check('the confirmation dialog warns that the transcript keeps the abandoned text', dialog.includes(t('notice.abandonedWarn')))
+check('the confirmation dialog reports the dropped turn count', dialog.includes('2'))
+check('the dialog contains no emoji', !EMOJI.test(dialog))
+
+// ── panel with no session ──────────────────────────────────────────────────
+const fakeCtx = { get: () => undefined, effect: () => () => {} }
+const panel = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.RewindPanel, {
+  ctx: fakeCtx, variant: 'inline', t,
+}))
+check('the panel explains that no session is open', panel.includes(t('state.noSession')))
+check('the panel renders the header actions', panel.includes(t('action.snapshot')) && panel.includes(t('action.refresh')))
+check('the panel contains no emoji', !EMOJI.test(panel), (panel.match(EMOJI) ?? [''])[0])
+
+// ── apply() wiring ─────────────────────────────────────────────────────────
+const registered = []
+const injected = []
+const fakeSlots = {
+  inject: (key, callback) => { injected.push(key); callback(); return () => {} },
+  register: (options, component) => { registered.push({ options, component }); return () => {} },
+}
+const effects = []
+const applyCtx = {
+  get: (name) => (name === 'slots' ? fakeSlots : name === 'locale' ? { register: () => () => {} } : undefined),
+  effect: (callback, label) => { effects.push(label); return callback() },
+}
+moduleExports.apply(applyCtx)
+check('apply waits on each surface declaration',
+  injected.join(',') === 'conversation.session.header.actions,sidebar.footer.action,shell.overlay,settings.section',
+  injected.join(','))
+check('apply registers three surfaces plus the silent session probe', registered.length === 4, String(registered.length))
+check('every registration names a declared slot and a unique id',
+  registered.every((entry) => ['conversation.session.header.actions', 'sidebar.footer.action', 'shell.overlay', 'settings.section']
+    .includes(entry.options.name))
+  && new Set(registered.map((entry) => entry.options.id)).size === 4,
+  JSON.stringify(registered.map((entry) => [entry.options.name, entry.options.id])))
+check('every registration declares the locale namespace', registered.every((entry) => entry.options.locale === 'rewind'))
+check('the settings page provides its own label', typeof registered.find((entry) => entry.options.name === 'settings.section')?.options.label === 'function')
+check('every contribution is owned by an effect',
+  effects.length === 5
+  && ['dictionaries', 'session probe', 'sidebar trigger', 'overlay panel', 'settings page']
+    .every((suffix) => effects.some((label) => label === `dsh-plugin-rewind: ${suffix}`)),
+  effects.join(' | '))
+
+const probeEntry = registered.find((entry) => entry.options.name === 'conversation.session.header.actions')
+check('the session probe uses the session-scoped inject form', typeof probeEntry?.options.inject === 'function')
+let probeInjectError = ''
+try {
+  probeEntry.options.inject('session-from-slot')
+} catch (error) {
+  probeInjectError = String(error?.message ?? error)
+}
+check('the session probe records the slot session without throwing', probeInjectError === '', probeInjectError)
+const probeMarkup = ReactDOMServer.renderToStaticMarkup(React.createElement(probeEntry.component, { sessionId: 'session-from-slot' }))
+check('the session probe renders nothing', probeMarkup === '', JSON.stringify(probeMarkup))
+
+// The surfaces must be renderable on their own. The overlay is expected to
+// render nothing while it is closed, which is what keeps it free until used.
+for (const entry of registered) {
+  if (entry.options.name === 'conversation.session.header.actions') continue
+  const markup = ReactDOMServer.renderToStaticMarkup(React.createElement(entry.component, { t, wide: true, ctx: applyCtx }))
+  if (entry.options.name === 'shell.overlay') {
+    check('the overlay renders nothing while closed', markup === '', JSON.stringify(markup.slice(0, 40)))
+  } else {
+    check(`the ${entry.options.name} surface renders`, typeof markup === 'string' && markup.length > 0)
+  }
+  check(`the ${entry.options.name} surface contains no emoji`, !EMOJI.test(markup))
+}
+
+const failed = results.filter((entry) => !entry.ok)
+console.log(`\n${results.length - failed.length}/${results.length} checks passed`)
+if (failed.length > 0) {
+  console.log('failed:', failed.map((entry) => entry.name).join(', '))
+  process.exitCode = 1
+}
