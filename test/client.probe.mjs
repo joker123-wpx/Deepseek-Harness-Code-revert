@@ -784,6 +784,34 @@ check('the timeline draws no branch title text',
     && lane(0).join(' ') === '0 1 2 3 4 5 6* 7* 8* 9*',
     JSON.stringify({ trunk: lane(0), first: lane(1), second: lane(2) }))
 }
+// ── "shows as rewound" and "is rewound" must be the same flag ───────────────
+// The reported contradiction: the details pane said the row was live while the card was
+// dimmed, because the card styling also consulted the host's CUMULATIVE `abandoned`
+// flag. A row the current branch uses must look live whatever that flag says.
+{
+  const sharedRows = [
+    { id: 'cp0', sessionId: 's1', afterTurn: 0, manifest: true, prompt: '第一轮', abandoned: false },
+    // Left the surface at some earlier point, but the current branch uses it again.
+    // lreadyRewound: false is what the real host reports: the strict flags are the
+    // authority, and bandoned alone is only a fallback for a host without them.
+    { id: 'cp1', sessionId: 's1', afterTurn: 1, manifest: true, prompt: '保留下来的行', abandoned: true, alreadyRewound: false },
+    { id: 'cp0b', sessionId: 's1', afterTurn: 0, manifest: true, prompt: '', alreadyRewound: false },
+  ]
+  const sharedGraph = graphFor([{ id: 's1', title: '会话', live: true }], sharedRows, { width: 900, limit: 10 ** 9 })
+  const markup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
+    layout: sharedGraph.layout, currentSessionId: 's1', onSelect: () => {}, t,
+  }))
+  const nodeLive = sharedGraph.layout.nodes.find((node) => node.checkpoint.id === 'cp1')?.dead !== true
+  check('a live row is drawn as live even when the host still marks it abandoned',
+    nodeLive
+    && !markup.includes('stroke-dasharray="5 3"')
+    && markup.includes('var(--rw-fg)')
+    // The badge must not contradict the card either: no "rewound" on a live row, and a
+    // snapshot row keeps its green stripe.
+    && !markup.includes(t('badge.rewound'))
+    && markup.includes('var(--rw-ok)'),
+    JSON.stringify({ nodeLive }))
+}
 // ── the newest branch's numbers are bold white ─────────────────────────────
 // Asked for: "the new turn's rail number should be bold white type". The lane the
 // conversation is on is the only one that is not history, so its numbers are the only
