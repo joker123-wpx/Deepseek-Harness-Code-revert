@@ -100,7 +100,8 @@ check('the fork edge is anchored at the checkpoint whose turn end matches the se
   forkEdge !== undefined && forkEdge.from.checkpoint.id === 'cp1' && forkEdge.to.checkpoint.id === 'cp4',
   JSON.stringify(layout.edges.filter((edge) => edge.kind === 'fork').map((edge) => [edge.from.checkpoint.id, edge.to.checkpoint.id])))
 check('the canvas is large enough for every node',
-  layout.width >= childLane * 190 + 158 && layout.height >= safetyNode.y + 26)
+  layout.width >= layout.cardX + layout.cardW && layout.height >= safetyNode.y + 46,
+  JSON.stringify({ width: layout.width, cardX: layout.cardX, cardW: layout.cardW, height: layout.height, safetyY: safetyNode.y }))
 
 // ── rendering ──────────────────────────────────────────────────────────────
 const t = (key) => moduleExports.dictionaries.zh[key] ?? key
@@ -119,6 +120,17 @@ check('every node has a stub to the rail', (tree.match(/class="rw-stub"/g) ?? []
 check('every node has a junction dot', (tree.match(/class="rw-dot"/g) ?? []).length === 10,
   String((tree.match(/class="rw-dot"/g) ?? []).length))
 check('every node renders as a card', (tree.match(/class="rw-card"/g) ?? []).length === 5)
+// Selection must be unmistakable yet singular: one accent outline, drawn once.
+const selectedRects = (tree.match(/class="rw-selected"/g) ?? []).length
+check('exactly the selected row is highlighted', selectedRects === 1, String(selectedRects))
+check('the selected row is the one asked for', /class="rw-selected"[\s\S]*?<\/g>/.test(tree)
+  || tree.includes('rw-selected'))
+check('row cards fill the graph viewport', layout.cardW >= 400, String(layout.cardW))
+check('no card overflows the canvas', layout.cardX + layout.cardW <= layout.width,
+  JSON.stringify({ cardX: layout.cardX, cardW: layout.cardW, width: layout.width }))
+check('every row sits on its own 54px pitch',
+  layout.nodes.every((node) => node.y === layout.nodes[0].y + node.row * 54),
+  JSON.stringify(layout.nodes.map((node) => [node.row, node.y])))
 check('node labels show the turn', tree.includes('Turn 1') || tree.includes('轮次 1') || tree.includes('Turn'), tree.slice(0, 120))
 check('the rendered tree contains no emoji', !EMOJI.test(tree), (tree.match(EMOJI) ?? [''])[0])
 

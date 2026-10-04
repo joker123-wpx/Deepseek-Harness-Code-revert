@@ -152,16 +152,17 @@ const client = globalThis.__rewindHandoff.factory((specifier) => {
 })
 const t = (key) => client.dictionaries.zh[key] ?? key
 
-const layout = client.buildLayout(overview?.sessions ?? [], overview?.checkpoints ?? [])
+const layout = client.buildLayout(overview?.sessions ?? [], overview?.checkpoints ?? [], { width: 900 })
+const selectedCheckpoint = overview?.checkpoints?.slice(-1)[0]
 const tree = ReactDOMServer.renderToStaticMarkup(React.createElement(client.TreeGraph, {
   layout,
-  selectedId: overview?.checkpoints?.slice(-1)[0]?.id,
+  selectedId: selectedCheckpoint?.id,
   currentSessionId: overview?.currentSessionId,
   onSelect: () => {},
   t,
 }))
 const details = ReactDOMServer.renderToStaticMarkup(React.createElement(client.DetailsPane, {
-  checkpoint: overview?.checkpoints?.slice(-1)[0],
+  checkpoint: selectedCheckpoint,
   session: overview?.sessions?.[0],
   workspace: overview?.cwd,
   t,
@@ -170,27 +171,67 @@ const details = ReactDOMServer.renderToStaticMarkup(React.createElement(client.D
   plan: undefined,
 }))
 
+// A faithful static replica of the panel chrome, so the preview shows the real
+// composition (legend bar, scrolling timeline, details column, action footer)
+// rather than a detached graph.
+const legendItem = (label, color) => `<span><i style="background:${color}"></i>${label}</span>`
+const legend = [
+  legendItem(t('panel.legend.snapshot'), 'var(--rw-ok)'),
+  legendItem(t('panel.legend.conversationOnly'), 'var(--rw-accent)'),
+  legendItem(t('panel.legend.safety'), 'var(--rw-warn)'),
+  legendItem(t('panel.legend.abandoned'), 'var(--rw-fg-3)'),
+].join('')
+const button = (label, variant) => `<button class="rw-btn" type="button"${variant === undefined ? '' : ` data-variant="${variant}"`}>${label}</button>`
+const roots = overview?.roots ?? []
+const header = `<div class="rw-head">
+  <div class="rw-title">${t('panel.title')}</div>
+  <div class="rw-sub" style="max-width:44ch">${roots.length > 0 ? `${t('panel.roots')}: ${roots[0]}` : (overview?.cwd ?? '')}</div>
+  ${overview?.autoSelected === true ? `<span class="rw-badge">${t('panel.autoSelected')}</span>` : ''}
+  <div class="rw-spacer"></div>
+</div>`
+const footer = `<div class="rw-foot">
+  ${button(t('action.snapshot'))}
+  ${button(t('action.refresh'))}
+  ${button(t('action.gc'))}
+  <div class="rw-spacer"></div>
+  <span>${(overview?.checkpoints ?? []).length} ${t('panel.checkpoints')}</span>
+  <span class="rw-mono">rewind/v1</span>
+  ${button(t('action.close'), 'quiet')}
+</div>`
+
 const previewDir = join(here, '..', 'preview')
 await fs.mkdir(previewDir, { recursive: true })
 const outPath = join(previewDir, 'panel-preview.html')
 const html = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>dsh-plugin-rewind 面板预览</title>
 <style>
-body{margin:0;background:#17171a;color:#f2f2f3;font:13px/20px system-ui,'Segoe UI',sans-serif}
-.wrap{display:flex;flex-direction:column;gap:12px;padding:16px}
-.card{background:#232326;border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px}
-.graph{overflow:auto}
-.side{max-width:340px}
-h1{font-size:15px;margin:0 0 4px 0}
+html,body{height:100%}
+body{margin:0;background:#101013;color:#f2f2f3;font:13px/20px system-ui,'Segoe UI',sans-serif}
+.page{padding:16px;display:flex;flex-direction:column;gap:10px;height:calc(100% - 32px)}
+h1{font-size:15px;margin:0}
 p{margin:0;color:#84848c;font-size:12px}
+.drawer{flex:1 1 auto;min-height:560px;height:min(760px,calc(100vh - 120px));width:100%;max-width:1240px;background:var(--rw-bg);border:1px solid var(--rw-line);border-radius:12px;display:flex;flex-direction:column;overflow:hidden}
+.body{display:flex;flex:1 1 auto;min-height:0}
+.graph{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;background:var(--rw-bg-2)}
+.scroll{flex:1 1 auto;min-height:0;overflow:auto}
+.side{flex:0 0 340px;border-left:1px solid var(--rw-line);padding:14px;overflow:auto;background:var(--rw-bg)}
 ${client.css ?? ''}
 </style></head>
-<body><div class="wrap rw-root">
-<h1>对话回退 / 工作区回滚 — 树图预览</h1>
-<p>由 test/live-forensics.mjs 用真实检查点数据渲染（react-dom/server），不是运行中的界面截图。</p>
-<div class="card graph"><div class="rw-legend"><span><i style="background:var(--rw-accent)"></i>${t('panel.legend.current')}</span><span><i style="background:var(--rw-fg-3)"></i>${t('panel.legend.abandoned')}</span><span><i style="background:var(--rw-ok)"></i>${t('panel.legend.snapshot')}</span><span><i style="background:var(--rw-warn)"></i>${t('panel.legend.safety')}</span></div>${tree}</div>
-<div class="card side">${details}</div>
+<body><div class="page rw-root">
+<h1>对话回退 / 工作区回滚 — 面板预览</h1>
+<p>由 test/live-forensics.mjs 用真实检查点数据渲染（react-dom/server + 插件自身的样式表），不是运行中的界面截图。</p>
+<div class="drawer">
+  ${header}
+  <div class="body">
+    <div class="graph">
+      <div class="rw-legend">${legend}</div>
+      <div class="scroll">${tree}</div>
+    </div>
+    <div class="side">${details}</div>
+  </div>
+  ${footer}
+</div>
 </div></body></html>`
 await fs.writeFile(outPath, html, 'utf8')
 console.log(`preview written: ${outPath}`)
-console.log(`tree markup: ${tree.length} bytes, nodes=${(tree.match(/class="rw-node"/g) ?? []).length}, lanes=${(layout.lanes ?? []).length}, rows=${(layout.rows ?? []).length}`)
+console.log(`tree markup: ${tree.length} bytes, nodes=${(tree.match(/class="rw-node"/g) ?? []).length}, lanes=${(layout.lanes ?? []).length}, rows=${(layout.rows ?? []).length}, cardW=${layout.cardW}`)
