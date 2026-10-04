@@ -736,6 +736,30 @@ for (const [action, shape] of uiRequests) {
 }
 check('every panel action reaches a real branch of the executor',
   fellThrough.length === 0, JSON.stringify(fellThrough))
+// ── the re-ask hands the prompt over only once the composer has it ──────────
+// Reported as "a small problem with rewind-and-ask-again": the panel set the draft
+// and submitted in the same tick, so the composer sent the PREVIOUS text (or an
+// empty prompt) because it applies a draft on its own next render.
+{
+  const composer = { draft: '上一轮的残留', sent: undefined }
+  const deps = {
+    ...recordingDeps(),
+    inputActions: {
+      setDraft: (text) => { setTimeout(() => { composer.draft = text }, 10) },
+      submit: () => { composer.sent = composer.draft },
+    },
+  }
+  await executeRequest({
+    checkpoint: { id: 'cpA', afterTurn: 3 },
+    conversation: 'inplace',
+    workspace: 'none',
+    reask: true,
+    reaskFrom: 'cpA',
+    text: '改好的新提问',
+  }, deps)
+  check('a re-ask sends the edited prompt, not the previous draft',
+    composer.sent === '改好的新提问', String(composer.sent))
+}
 check('the dismiss control exists so a banner can be cleared by hand',
   typeof t('action.dismiss') === 'string' && t('action.dismiss').length > 0)
 
