@@ -990,13 +990,17 @@ check('the cards keep their width however many branches there are',
     { id: 'cp104', sessionId: 's1', afterTurn: 104, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'b' },
     { id: 'cp105', sessionId: 's1', afterTurn: 105, manifest: false, canRestoreWorkspace: false, reachable: true, prompt: 'c' },
   ]
-  const liveIds = new Set(['cp100', 'cp105'])
-  const anchor = moduleExports.__internals.reaskAnchorFor(rows, rows[2], liveIds)
-  check('re-asking the newest turn anchors on the last live row, not a greyed one',
+  // The anchor is the row before the FIRST re-ask of this line: 104 was re-asked (its
+  // replacement moved the line on), so the anchor is 100 — and it stays 100 no matter
+  // how many times the new turns are re-asked in turn.
+  const withFlag = [{ ...rows[1], ownTurnRewound: true }, rows[2]]
+  const anchor = moduleExports.__internals.reaskAnchorFor([...rows.slice(0, 1), ...withFlag], rows[2])
+  check('re-asking the newest turn anchors on the row before the first re-ask',
     anchor?.id === 'cp100', JSON.stringify(anchor?.id))
-  const withoutSet = moduleExports.__internals.reaskAnchorFor(rows, rows[2])
-  check('without a live set the old behaviour is still available (and would pick 104)',
-    withoutSet?.id === 'cp104', JSON.stringify(withoutSet?.id))
+  const next = { id: 'cp180', sessionId: 's1', afterTurn: 180, manifest: false, canRestoreWorkspace: false, reachable: true, prompt: 'd' }
+  const later = moduleExports.__internals.reaskAnchorFor(
+    [rows[0], { ...rows[1], ownTurnRewound: true }, { ...rows[2], ownTurnRewound: true }, next], next)
+  check('and it is still 121-style after many re-asks', later?.id === 'cp100', JSON.stringify(later?.id))
 }
 // ── the confirm dialog names the turn ranges ───────────────────────────────
 // Asked for: "the prompt when rolling back is unclear — it keeps asking me about
