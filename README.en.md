@@ -6,8 +6,6 @@ no emoji, no DOM injection, no build step.
 
 [中文文档](README.md) · [Architecture notes](docs/ARCHITECTURE.md)
 
-**Author: [joker123-wpx](https://github.com/joker123-wpx)** · **Repository: <https://github.com/joker123-wpx/Deepseek-Harness-Code-revert>** (the plugin panel's footer carries the same name and link)
-
 ---
 
 ## What it does
@@ -157,7 +155,7 @@ lib/conversation.js  session side: turn analysis, surface fold, rewind dialects
 lib/store.js         persistence: CAS blobs, manifests, index, trash, GC
 lib/rpc.js           transport: one RPC route with a loopback fence
 lib/client.js        browser half: three slots, SVG tree, details pane, dialogs
-test/                7 offline probes + 2 diagnostics (306 assertions)
+test/                7 offline probes + 2 diagnostics (308 assertions)
 ```
 
 ```bash

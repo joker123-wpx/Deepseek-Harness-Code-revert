@@ -446,6 +446,11 @@ for (const entry of registered) {
       markup.includes('joker123-wpx')
       && markup.includes('href="https://github.com/joker123-wpx/Deepseek-Harness-Code-revert"'),
       JSON.stringify((markup.match(/joker123-wpx/g) ?? []).length))
+    // The credit must be the GitHub mark itself rather than a generic outbound
+    // glyph: that path signature is the octocat silhouette on a 16x16 canvas.
+    check(`the ${entry.options.name} credit uses the GitHub mark`,
+      markup.includes('viewBox="0 0 16 16"') && markup.includes('M8 0C3.58 0 0 3.58 0 8c0 3.54'),
+      JSON.stringify((markup.match(/viewBox="0 0 16 16"/g) ?? []).length))
   }
 }
 
