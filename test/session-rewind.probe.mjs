@@ -173,6 +173,58 @@ try {
 }
 check('two stacked rewinds still reload', replayAfterTwo === 2, `messages=${replayAfterTwo}`)
 
+// ── rewinding INTO the middle of the branch that a rewind produced ──────────
+// The reported case: 1..12 → rewind to 4 → continue 5 6 7 8 9 → rewind to 7. The rows
+// kept after the first rewind (the new 5 and 6) must survive: only what follows the
+// second target may be dropped. Cutting at the first abandoned turn instead would
+// silently delete the branch's own earlier rows.
+{
+  const branchSession = Session.create('session-rewind-probe-branch', [], header('session-rewind-probe-branch'))
+  const appendBranchTurn = (turn, promptText) => {
+    branchSession.append('turn/start', { turn })
+    branchSession.append('step/start', { turn, step: 1 })
+    const user = branchSession.append('user/message', userMessage(`u${turn}`, promptText), { surfaceOp: 'append' })
+    branchSession.append('request/context', { provider: 'deepseek-official', model: 'deepseek-flash' })
+    branchSession.append('assistant/chunk', { turn, step: 1, chunk: { type: 'text', text: `回答${turn}` } })
+    const assistant = branchSession.append('assistant/message', {
+      turn,
+      step: 1,
+      message: { id: `a${turn}`, role: 'assistant', source: { kind: 'model', provider: 'deepseek-official', model: 'deepseek-flash' }, content: [{ type: 'text', text: `回答${turn}` }] },
+    }, { surfaceOp: 'append' })
+    branchSession.append('step/end', { turn, step: 1 })
+    branchSession.append('turn/end', { turn, reason: { kind: 'completed' } })
+    return { userSeq: user.seq, assistantSeq: assistant.seq }
+  }
+  const turns = []
+  for (let turn = 1; turn <= 4; turn += 1) turns.push(appendBranchTurn(turn, `第${turn}轮提问`))
+  // Rewind to turn 4: everything after it leaves the surface.
+  const cut = planRewind(branchSession, turns[3].userSeq)
+  check('the first cut is planned against the real session', cut.ok === true, JSON.stringify(cut.reason ?? ''))
+  // A rewind is only writable inside an open turn/step — the format's own rule — so
+  // open one exactly as the agent's own rewind tool would.
+  branchSession.append('turn/start', { turn: 5 })
+  branchSession.append('step/start', { turn: 5, step: 1 })
+  applyRewind(branchSession, cut)
+  branchSession.append('step/end', { turn: 5, step: 1 })
+  branchSession.append('turn/end', { turn: 5, reason: { kind: 'completed' } })
+  // Continue on the new branch: turns 6..10 in log terms.
+  const branch = []
+  for (let turn = 6; turn <= 10; turn += 1) branch.push(appendBranchTurn(turn, `新第${turn}轮提问`))
+  // Now rewind to the branch's own third row — its earlier rows must stay.
+  const nested = planRewind(branchSession, branch[2].userSeq)
+  check('rewinding into the branch is planned', nested.ok === true, JSON.stringify(nested.reason ?? ''))
+  const dropped = (nested.droppedTurns ?? []).map((entry) => entry.turn).sort((a, b) => a - b)
+  // The cut starts EXACTLY at the clicked row: the branch's earlier rows are outside
+  // the shadowed range and stay. This is what catches "5 and 6 vanished".
+  check('a nested rewind cuts exactly at its target, keeping the earlier branch rows',
+    nested.start === branch[2].userSeq
+    && JSON.stringify(dropped) === JSON.stringify([8, 9, 10]),
+    JSON.stringify({ target: nested.targetTurn, start: nested.start, expected: branch[2].userSeq, dropped }))
+  check('the shadowed tail is the target turn and what follows it, nothing before it',
+    (nested.surfaceNodes ?? []).length === 6 && nested.start > branch[1].userSeq,
+    JSON.stringify({ surfaceTail: (nested.surfaceNodes ?? []).length, keep: branch[1].userSeq }))
+}
+
 const failed = results.filter((entry) => !entry.ok)
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`)
 if (failed.length > 0) {
