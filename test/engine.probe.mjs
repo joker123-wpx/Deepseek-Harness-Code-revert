@@ -488,6 +488,46 @@ check('the overview carries the outcome of the last queued rewind',
   drainedOverview.queue?.pending === undefined && drainedOverview.queue?.last !== undefined,
   JSON.stringify(drainedOverview.queue))
 
+// ── a held rewind must not be stranded by a busy agent ─────────────────────
+// One attempt at the turn boundary is not enough: this agent continues into a
+// new round by itself, so the drain can find a tool call already in flight. The
+// request is retried on a timer instead of being dropped, which is what made a
+// confirmed rewind vanish without a trace.
+engine.enterTool(sessionId)
+await engine.applyOrQueue(queueCp.id, { conversation: 'none', workspace: 'restore' })
+await engine.drainPending(sessionId)
+check('a drain that finds the agent busy keeps the request and schedules a retry',
+  engine.pendingOf(sessionId)?.checkpointId === queueCp.id && engine.drainTimers.size === 1,
+  JSON.stringify({ pending: engine.pendingOf(sessionId)?.checkpointId, timers: engine.drainTimers.size }))
+check('the waiting counter advances', (engine.pending.get(sessionId)?.waited ?? 0) >= 1,
+  String(engine.pending.get(sessionId)?.waited))
+check('cancelling clears the retry timer too',
+  engine.cancelPending(sessionId).cancelled === true && engine.drainTimers.size === 0
+  && engine.pendingOf(sessionId) === undefined)
+
+await engine.applyOrQueue(queueCp.id, { conversation: 'none', workspace: 'restore' })
+engine.pending.get(sessionId).waited = 41
+await engine.drainPending(sessionId)
+check('a rewind that waits too long reports a timeout instead of waiting forever',
+  engine.pendingOf(sessionId) === undefined
+  && engine.pendingResultOf(sessionId)?.ok === false
+  && String(engine.pendingResultOf(sessionId)?.message ?? '').includes('超时'),
+  JSON.stringify(engine.pendingResultOf(sessionId)))
+engine.exitTool(sessionId)
+
+// ── provenance telemetry: which browser build called, and what it asked ────
+engine.noteClient('2026-10-04.5', 'apply')
+engine.recordRpc({ method: 'apply', client: '2026-10-04.5', params: { checkpointId: 'x' }, outcome: 'queued' })
+const telemetry = await engine.status()
+check('status reports the calling browser build',
+  telemetry.client?.build === '2026-10-04.5' && typeof telemetry.client.at === 'number',
+  JSON.stringify(telemetry.client))
+check('status keeps a log of state-changing calls',
+  Array.isArray(telemetry.rpcLog)
+  && telemetry.rpcLog.some((entry) => entry.method === 'apply' && entry.outcome === 'queued'),
+  JSON.stringify(telemetry.rpcLog))
+check('the call log is bounded', engine.rpcLog.length <= 40, String(engine.rpcLog.length))
+
 await fs.rm(sandbox, { recursive: true, force: true })
 
 const failed = results.filter((entry) => !entry.ok)

@@ -27,6 +27,7 @@ go back to any of them.
 | Tree graph | Git-log style: a turn gutter on the left, then one continuous rail per branch with a junction dot per checkpoint, then a full-width row card (a 3px left stripe encodes the kind; line one is the turn plus a state badge, line two the prompt excerpt plus the snapshot size). Selection carries exactly one signal — the card's accent outline and tint. All artwork is SVG paths; strictly **no emoji**. |
 | Edit and re-ask | The turn prompt in the details pane is editable, with a **gold** "rewind and ask again" button (the only gold control in the panel): it undoes *that* turn (the model no longer sees it), then places your edited prompt in the composer and sends it as a new turn. The rewind anchors on the checkpoint above the turn, so even the newest turn can be edited and re-asked. Delivery uses the product's public session-scoped `inputActions` (`setDraft` / `submit`), not a private API. |
 | Model tool | A `rewind` tool lets the agent list checkpoints and (only when the user asks) perform a rollback. |
+| Held rewinds retry | A held rewind is never dropped because the next round already started: the host keeps it and retries every 1.5s (about a minute), running it at the first quiet moment and reporting a timeout if there is none. It also records the calling browser build and the recent state-changing calls, readable from `status`. |
 | Action log | The footer keeps the last confirmed action (for example `apply(conversation=inplace) -> ...`), red on failure and amber when queued, so "the click did nothing" becomes a fact you can screenshot. |
 | Build self-check | The footer shows `v<version>+<build>`; when the browser build and the host-reported build disagree (page refreshed without a restart, or the reverse) the header shows "host half is older · restart the app". "Still broken after the fix" can then be told apart from "the old bundle is still loaded". |
 | Follows switches | After a workspace or session switch the panel follows the new conversation on its own: it subscribes to the session list and the workspace registry, re-reads the active session every 1.2s and refreshes the overview every 3s (skipped while the window is hidden), and clears the selection, details and any pending confirmation immediately. |
@@ -159,7 +160,7 @@ lib/conversation.js  session side: turn analysis, surface fold, rewind dialects
 lib/store.js         persistence: CAS blobs, manifests, index, trash, GC
 lib/rpc.js           transport: one RPC route with a loopback fence
 lib/client.js        browser half: three slots, SVG tree, details pane, dialogs
-test/                7 offline probes + 2 diagnostics (357 assertions)
+test/                7 offline probes + 2 diagnostics (372 assertions)
 ```
 
 ```bash

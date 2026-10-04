@@ -275,6 +275,41 @@ check('the turn-boundary snapshot recorded the workspace files',
   JSON.stringify(checkpoints.find((checkpoint) => checkpoint.afterTurn === 2)?.stats))
 check('no warnings were logged while running', registered.warnings.length === 0, registered.warnings.join(' | '))
 
+// ── provenance telemetry over the wire ─────────────────────────────────────
+// Which browser build is calling, and what it asked for, is what makes a field
+// report answerable. The client stamps its build id on every request.
+const telemetryServer = createServer(registered.routes[0].handler)
+await new Promise((resolve) => telemetryServer.listen(0, '127.0.0.1', resolve))
+const telemetryPort = telemetryServer.address().port
+const telemetryCall = async (body) => {
+  const response = await fetch(`http://127.0.0.1:${telemetryPort}/dsh-rewind/rpc`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return response.json()
+}
+await telemetryCall({ method: 'overview', params: {}, client: 'build-from-test' })
+const refused = await telemetryCall({
+  method: 'apply',
+  params: { checkpointId: 'whatever', conversation: 'inplace' },
+  client: 'build-from-test',
+})
+check('an unconfirmed apply is refused', refused?.ok === false
+  && refused.error.code === 'not-confirmed', JSON.stringify(refused))
+const logged = await telemetryCall({ method: 'status', params: {}, client: 'build-from-test' })
+const entries = logged?.value?.rpcLog ?? []
+check('the refused call is recorded with its client build',
+  entries.some((entry) => entry.method === 'apply' && entry.outcome === 'not-confirmed'
+    && entry.client === 'build-from-test'),
+  JSON.stringify(entries.slice(-3)))
+check('reads are not recorded as state changes',
+  entries.every((entry) => ['apply', 'snapshot', 'remove', 'gc', 'cancelQueued'].includes(entry.method)),
+  JSON.stringify(entries.map((entry) => entry.method)))
+check('status reports the calling browser build',
+  logged?.value?.client?.build === 'build-from-test', JSON.stringify(logged?.value?.client))
+await new Promise((resolve) => telemetryServer.close(resolve))
+
 await fs.rm(sandbox, { recursive: true, force: true })
 
 // The two halves report their build id; a mismatch is what "it still does not
