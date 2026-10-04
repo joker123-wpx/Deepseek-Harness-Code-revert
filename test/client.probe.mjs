@@ -577,6 +577,43 @@ check('the block header has a row to attach the control to',
   collapsedGraph.layout.nodes.some((node) => node.group === true)
   && expandedGraph.layout.nodes.some((node) => node.group === true))
 
+// ── the dialog must be clickable, not covered by its own backdrop ──────────
+// Reported from the field as "the dialog opens, nothing is clickable, and
+// clicking it closes it": the backdrop is `position:absolute` while the dialog
+// was static, so the backdrop painted on top and swallowed every click — which
+// both dimmed the dialog (grey-looking buttons) and cancelled on any click.
+const sheet = moduleExports.css
+check('the dialog is positioned above its backdrop',
+  /\.rw-modal\{[^}]*position:relative/.test(sheet) && /\.rw-modal\{[^}]*z-index:1/.test(sheet)
+  && /\.rw-backdrop\{z-index:0\}/.test(sheet),
+  JSON.stringify({
+    modal: /\.rw-modal\{[^}]*\}/.exec(sheet)?.[0]?.slice(0, 90),
+    backdrop: /\.rw-backdrop\{[^}]*\}/.exec(sheet)?.[0]?.slice(0, 60),
+  }))
+check('the drawer is positioned too, so its backdrop cannot cover it',
+  /\.rw-drawer\{position:(relative|absolute|fixed)/.test(sheet),
+  /\.rw-drawer\{[^}]*\}/.exec(sheet)?.[0]?.slice(0, 60))
+
+const dialogProps = {
+  request: { checkpoint: { id: 'cp1', afterTurn: 3 }, conversation: 'inplace', workspace: 'none' },
+  plan: undefined,
+  t,
+  onCancel: () => {},
+  onConfirm: () => {},
+}
+const dialogMarkup = ReactDOMServer.renderToStaticMarkup(
+  React.createElement(moduleExports.ConfirmDialog, { ...dialogProps, busy: false, error: undefined, queued: false }),
+)
+check('the dialog renders a live confirm button when nothing is running',
+  dialogMarkup.includes('rw-modal-actions') && !dialogMarkup.includes('disabled=""'),
+  dialogMarkup.slice(dialogMarkup.indexOf('rw-modal-actions'), dialogMarkup.indexOf('rw-modal-actions') + 160))
+check('the dialog is announced as a modal dialog',
+  dialogMarkup.includes('role="dialog"') && dialogMarkup.includes('aria-modal="true"'))
+check('a running action disables the confirm button but still offers a way out',
+  ReactDOMServer.renderToStaticMarkup(
+    React.createElement(moduleExports.ConfirmDialog, { ...dialogProps, busy: true, error: undefined, queued: false }),
+  ).includes('disabled=""'))
+
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
 }))

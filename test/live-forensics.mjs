@@ -177,6 +177,17 @@ const renderTree = (selectedId) => ReactDOMServer.renderToStaticMarkup(React.cre
   onToggleGroup: () => {},
   t,
 }))
+// The confirm dialog, over the same tree: the piece reported as unclickable.
+const dialog = ReactDOMServer.renderToStaticMarkup(React.createElement(client.ConfirmDialog, {
+  request: { checkpoint: overview?.checkpoints?.slice(-1)[0], conversation: 'inplace', workspace: 'none' },
+  plan: undefined,
+  t,
+  busy: false,
+  error: undefined,
+  queued: false,
+  onCancel: () => {},
+  onConfirm: () => {},
+}))
 const tree = renderTree(undefined)
 const treeSelected = renderTree(selectedCheckpoint?.id)
 const details = ReactDOMServer.renderToStaticMarkup(React.createElement(client.DetailsPane, {
@@ -376,6 +387,10 @@ ${panel(tree, '')}
 ${panel(treeSelected, `<div class="side">${details}</div>`)}
 <div class="caption">③ 点了金色按钮之后（此块展开全部轮次以看清分叉；示例：回退到第 ${rewindFromTurn} 轮之前并改写提问）：第 ${rewindFromTurn}–${lastTurn} 轮变灰＋虚线＋「已回退」，底部新增第 ${newTurn} 轮</div>
 ${panel(treeAfter, '')}
+<div class="caption">④ 确认弹窗（点「回退对话（就地遗忘）」后）：弹窗必须盖在遮罩之上，按钮可点</div>
+<div class="drawer" style="position:relative;height:360px">
+  <div class="rw-modal-wrap" style="position:absolute">${dialog}</div>
+</div>
 <div class="chat">
   <div class="note">下面是聊天区的示意（产品自带的输入框，不属于插件 UI）：回退后插件把改写的提问放进输入框并提交。</div>
   <div class="bubble" data-role=ghost">（被回退的第 ${rewindFromTurn}–${lastTurn} 轮不再出现在模型的可见历史里；聊天记录里已显示的原文不会消失，日志与树图都完整保留）</div>
