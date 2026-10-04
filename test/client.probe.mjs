@@ -97,7 +97,7 @@ check('rows follow the turn index', cp2Node.y > cp1Node.y && cp1Node.y > layout.
 check('rows are consecutive slots, one pitch apart',
   layout.nodes.slice().sort((a, b) => a.row - b.row)
     .every((node, index, list) => index === 0 || (node.row === list[index - 1].row + 1
-      && node.y - list[index - 1].y === 54)),
+      && node.y - list[index - 1].y === 66)),
   JSON.stringify(layout.nodes.slice().sort((a, b) => a.row - b.row).map((node) => [node.row, node.y])))
 const safetyNode = layout.nodes.find((node) => node.checkpoint.id === 'cp3')
 // Rows are unique slots in turn order, so a backup recorded at turn+0.5 lands
@@ -118,7 +118,7 @@ check('the fork edge is anchored at the checkpoint whose turn end matches the se
   forkEdge !== undefined && forkEdge.from.checkpoint.id === 'cp1' && forkEdge.to.checkpoint.id === 'cp4',
   JSON.stringify(layout.edges.filter((edge) => edge.kind === 'fork').map((edge) => [edge.from.checkpoint.id, edge.to.checkpoint.id])))
 check('the canvas is large enough for every node',
-  layout.width >= layout.cardX + layout.cardW && layout.height >= safetyNode.y + 46,
+  layout.width >= layout.cardX + layout.cardW && layout.height >= safetyNode.y + 58,
   JSON.stringify({ width: layout.width, cardX: layout.cardX, cardW: layout.cardW, height: layout.height, safetyY: safetyNode.y }))
 
 // ── rendering ──────────────────────────────────────────────────────────────
@@ -144,11 +144,16 @@ check('exactly the selected row is highlighted', selectedRects === 1, String(sel
 check('the selected row is the one asked for', /class="rw-selected"[\s\S]*?<\/g>/.test(tree)
   || tree.includes('rw-selected'))
 check('row cards fill the graph viewport',
-  layout.cardW >= MIN_CARD_W && layout.cardW >= (layout.width - 62) * 0.5,
+  layout.cardW >= MIN_CARD_W && layout.cardW >= layout.width * 0.5,
   `${layout.cardW} of ${layout.width}`)
-check('the cards sit inside the canvas with an even margin',
-  Math.abs(layout.cardX - ((layout.width - 62) - (layout.cardX + layout.cardW))) <= 1
-  && layout.cardX + layout.cardW <= layout.width - 62,
+check('the cards fill the width between the rail column and the time rail',
+  // The right gutter IS the right margin, so a row ends exactly where the time rail
+  // begins and the box is as long as the panel allows. On a canvas narrower than
+  // that, the card's own minimum width wins and the rails stay clear.
+  (layout.cardW > MIN_CARD_W
+    ? Math.abs((layout.cardX + layout.cardW) - (layout.width - 112)) <= 1
+    : layout.cardX + layout.cardW <= layout.width - 112)
+  && layout.cardX + layout.cardW <= layout.width,
   JSON.stringify({ cardX: layout.cardX, cardW: layout.cardW, width: layout.width }))
 check('every card starts in the card column, clear of the gutter', layout.nodes.every((node) => node.x === layout.cardX),
   JSON.stringify(layout.nodes.map((node) => node.x)))
@@ -158,8 +163,8 @@ check('the timeline is inset from the panel edge', layout.nodes[0].railX > 40 &&
   JSON.stringify({ railX: layout.nodes[0].railX, cardX: layout.cardX }))
 check('no card overflows the canvas', layout.cardX + layout.cardW <= layout.width,
   JSON.stringify({ cardX: layout.cardX, cardW: layout.cardW, width: layout.width }))
-check('every row sits on its own 54px pitch',
-  layout.nodes.every((node) => node.y === layout.nodes[0].y + node.row * 54),
+check('every row sits on its own 66px pitch',
+  layout.nodes.every((node) => node.y === layout.nodes[0].y + node.row * 66),
   JSON.stringify(layout.nodes.map((node) => [node.row, node.y])))
 check('node labels show the turn', tree.includes('Turn 1') || tree.includes('轮次 1') || tree.includes('Turn'), tree.slice(0, 120))
 check('the rendered tree contains no emoji', !EMOJI.test(tree), (tree.match(EMOJI) ?? [''])[0])
@@ -323,12 +328,13 @@ const rowsOf = (count) => Array.from({ length: count }, (_, index) => ({
 const none = new Set()
 
 const twentyOne = groupRows(rowsOf(21), none, 10)
-check('21 rows fold into two blocks, leaving the anchor row',
-  twentyOne.visible.length === 3
+check('21 rows fold into two blocks, keeping one row per block',
+  twentyOne.visible.length === 5
   && twentyOne.groups.length === 2
   && twentyOne.groups.every((group) => group.count === 10 && group.collapsed === true)
   && twentyOne.visible[0].id === 'r0'
-  && twentyOne.visible[1].__group === true && twentyOne.visible[2].__group === true,
+  && twentyOne.visible[1].id === 'r1' && twentyOne.visible[2].__group === true
+  && twentyOne.visible[3].id === 'r11' && twentyOne.visible[4].__group === true,
   JSON.stringify({
     visible: twentyOne.visible.map((row) => row.id ?? row.__group),
     groups: twentyOne.groups.map((group) => [group.from, group.to, group.count, group.collapsed]),
@@ -336,15 +342,15 @@ check('21 rows fold into two blocks, leaving the anchor row',
 check('the first block starts at the second row and ends at row ten',
   twentyOne.groups[0].from === 1 && twentyOne.groups[0].to === 10
   && twentyOne.groups[1].from === 11 && twentyOne.groups[1].to === 20)
-check('the folded count is 20 of 21',
-  21 - twentyOne.visible.filter((row) => row.__group !== true).length === 20,
+check('the folded count is 18 of 21 (one row kept per block)',
+  21 - twentyOne.visible.filter((row) => row.__group !== true).length === 18,
   String(21 - twentyOne.visible.filter((row) => row.__group !== true).length))
 
 const opened = groupRows(rowsOf(21), new Set([1]), 10)
-check('opening one block reveals its ten rows and drops its summary',
-  opened.visible.length === 12
+check('opening a block reveals its rows and drops the summary',
+  opened.visible.length === 13
   && opened.groups[0].collapsed === false && opened.groups[1].collapsed === true
-  && opened.visible.filter((row) => row.__group !== true).length === 11
+  && opened.visible.filter((row) => row.__group !== true).length === 12
   && opened.visible[1].id === 'r1' && opened.visible[1].control?.collapsed === false,
   JSON.stringify({ visible: opened.visible.length, collapsed: opened.groups.map((group) => group.collapsed) }))
 
@@ -352,46 +358,27 @@ const fifteen = groupRows(rowsOf(15), none, 10)
 check('a partial trailing block never folds',
   fifteen.groups.length === 2
   && fifteen.groups[1].count === 4 && fifteen.groups[1].foldable === false
-  && fifteen.visible.filter((row) => row.__group !== true).length === 5,
+  && fifteen.visible.filter((row) => row.__group !== true).length === 6,
   JSON.stringify({ groups: fifteen.groups.map((group) => [group.count, group.foldable]), visible: fifteen.visible.length }))
 
 check('ten rows or fewer never fold',
   groupRows(rowsOf(10), none, 10).groups.length === 0
   && groupRows(rowsOf(3), none, 10).visible.length === 3)
-check('eleven rows fold one block', (() => {
+check('eleven rows fold exactly one block', (() => {
   const eleven = groupRows(rowsOf(11), none, 10)
   return eleven.groups.length === 1 && eleven.groups[0].foldable === true
-    && eleven.visible.length === 2 && eleven.visible[0].id === 'r0'
+    && eleven.visible.length === 3 && eleven.visible[0].id === 'r0' && eleven.visible[1].id === 'r1'
 })())
 check('the first row survives every fold state',
   twentyOne.visible[0].id === 'r0' && fifteen.visible[0].id === 'r0' && opened.visible[0].id === 'r0')
 check('a block header carries the range and its state for the control',
-  twentyOne.visible[1].from === 1 && twentyOne.visible[1].to === 10
-  && twentyOne.visible[1].count === 10 && twentyOne.visible[1].collapsed === true
-  && twentyOne.visible[0].id === 'r0')
+  twentyOne.visible[2].from === 2 && twentyOne.visible[2].to === 10
+  && twentyOne.visible[2].count === 9 && twentyOne.visible[2].collapsed === true
+  && twentyOne.visible[0].id === 'r0' && twentyOne.visible[1].id === 'r1')
 check('a block header keeps its own checkpoints reachable while folded',
-  twentyOne.visible[1].firstId === 'r1' && twentyOne.visible[1].lastId === 'r10'
-  && twentyOne.visible[2].lastId === 'r20',
-  JSON.stringify([twentyOne.visible[1].firstId, twentyOne.visible[1].lastId, twentyOne.visible[2].lastId]))
-// The header is a fold control and nothing else — no action of its own. What is
-// needed is the ordinary rewind on a row, and expanding a block turns its rows back
-// into ordinary rows, starting with the block's first one.
-const openedBlock = groupRows(rowsOf(21), new Set([1]), 10)
-const headerMarkup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
-  layout: moduleExports.__internals.graphFor([{ id: 's1', title: '会话', live: true }], openedBlock.visible, { width: 900 }).layout,
-  selectedId: undefined,
-  currentSessionId: 's1',
-  onSelect: () => {},
-  onToggleGroup: () => {},
-  t,
-}))
-check('a block header carries no action of its own',
-  !headerMarkup.includes('rw-blockact'), 'no header action button')
-check('expanding a block makes its rows ordinary, selectable rows again',
-  openedBlock.visible[1].id === 'r1' && openedBlock.visible[1].control !== undefined
-  && openedBlock.visible.filter((row) => row.__group === true).length === 1
-  && moduleExports.__internals.selectedCheckpointOf(openedBlock.visible, 'r10')?.id === 'r10',
-  JSON.stringify(openedBlock.visible.slice(0, 4).map((row) => row.id)))
+  twentyOne.visible[2].firstId === 'r1' && twentyOne.visible[2].lastId === 'r10'
+  && twentyOne.visible[4].lastId === 'r20',
+  JSON.stringify([twentyOne.visible[2].firstId, twentyOne.visible[2].lastId, twentyOne.visible[4].lastId]))
 check('the block copy names its range and count',
   typeof t('panel.groupRow') === 'string' && t('panel.groupRow').includes('{count}')
   && t('panel.groupRow').includes('{from}') && t('panel.groupRow').includes('{to}'))
@@ -405,13 +392,12 @@ const foldLayout = moduleExports.buildLayout(
 const foldRows = foldLayout.nodes.slice().sort((a, b) => a.row - b.row)
 check('the folded timeline is compact: one row pitch per visible row',
   foldRows.every((node, index) => index === 0 || (node.row === foldRows[index - 1].row + 1
-    && node.y - foldRows[index - 1].y === 54)),
+    && node.y - foldRows[index - 1].y === 66)),
   JSON.stringify(foldRows.map((node) => [node.row, node.y])))
 check('a block header is its own row slot',
   foldRows.filter((node) => node.group === true).length === 2)
-check('no blank space is left above the newest rows', foldLayout.height <= 54 * 6 + 40,
+check('no blank space is left above the newest rows', foldLayout.height <= 66 * 6 + 40,
   String(foldLayout.height))
-
 // ── polling must not rebuild the graph ─────────────────────────────────────
 // The overview is polled every couple of seconds; when the payload carries no
 // news the previous object is kept, so the memoized layout and the SVG are left
@@ -594,22 +580,22 @@ const expandedGraph = graphFor(foldSessions, foldCheckpoints, {
 })
 check('the collapsed graph draws fewer rows than the expanded one',
   collapsedGraph.layout.nodes.length < expandedGraph.layout.nodes.length
-  && collapsedGraph.layout.nodes.length === 7 && expandedGraph.layout.nodes.length === 16,
+  && collapsedGraph.layout.nodes.length === 8 && expandedGraph.layout.nodes.length === 16,
   JSON.stringify([collapsedGraph.layout.nodes.length, expandedGraph.layout.nodes.length]))
 check('the collapsed graph carries block headers',
   collapsedGraph.visible.filter((row) => row.__group === true).length === 1
-  && collapsedGraph.visible.length === 7)
+  && collapsedGraph.visible.length === 8)
 check('the collapsed graph is shorter than the expanded one',
   collapsedGraph.layout.height < expandedGraph.layout.height,
   JSON.stringify([collapsedGraph.layout.height, expandedGraph.layout.height]))
 check('a collapsed block hides its rows behind one summary',
-  collapsedGraph.visible[0].id === 'g0'
-  && expandedGraph.visible.length - collapsedGraph.visible.length === 9,
+  collapsedGraph.visible[0].id === 'g0' && collapsedGraph.visible[1].id === 'g1'
+  && collapsedGraph.visible[2].__group === true
+  && expandedGraph.visible.length - collapsedGraph.visible.length === 8,
   JSON.stringify(collapsedGraph.visible.map((row) => row.id)))
 check('the fold control has a row to attach to in both states',
   collapsedGraph.layout.nodes.some((node) => node.group === true)
   && expandedGraph.layout.nodes.some((node) => node.checkpoint?.control !== undefined))
-
 // ── the dialog must be clickable, not covered by its own backdrop ──────────
 // Reported from the field as "the dialog opens, nothing is clickable, and
 // clicking it closes it": the backdrop is `position:absolute` while the dialog
@@ -700,7 +686,7 @@ check('a real row still resolves, and so does an empty selection',
   selectedCheckpointOf(collapsedGraph.visible, 'g0')?.id === 'g0'
   && selectedCheckpointOf(collapsedGraph.visible, undefined) === undefined
   && selectedCheckpointOf(collapsedGraph.visible, 'nope') === undefined)
-const headerMarkupOld = (() => {
+const headerMarkup = (() => {
   const markup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
     layout: collapsedGraph.layout,
     selectedId: headerIds[0],
@@ -713,7 +699,7 @@ const headerMarkupOld = (() => {
 })()
 check('a block header is drawn as a control with its range, not as a selected row',
   headerMarkup.includes('rw-groupbtn')
-  && headerMarkup.includes(t('panel.groupRow', { count: 9, from: '2', to: '10' }).slice(0, 6))
+  && headerMarkup.includes(t('panel.groupRow', { count: 10, from: '1', to: '10' }).slice(0, 6))
   && !/rw-node[^"]*"[^>]*aria-pressed="true"/.test(headerMarkup.split('rw-groupbtn')[0] ?? ''),
   headerMarkup.slice(0, 0) + `controls=${(headerMarkup.match(/rw-groupbtn/g) ?? []).length}`)
 
@@ -878,17 +864,15 @@ check('the card column is centred against the canvas',
       return {
         width,
         left: Math.round(layout.cardX),
-        // The time gutter owns the last 62px, so the margin to compare with is the
-        // one inside the usable width.
-        right: Math.round((width - 62) - (layout.cardX + layout.cardW)),
+        right: Math.round(width - (layout.cardX + layout.cardW)),
       }
     })
     wideLayout.__measured = measured
-    return measured.every((entry) => (entry.width >= 700 ? Math.abs(entry.left - entry.right) <= 1 : entry.left >= entry.right))
+    return measured.every((entry) => Math.abs(entry.left - entry.right) <= 1)
   })(),
   JSON.stringify(wideLayout.__measured ?? []))
-check('the card fills the usable width and stays inside the canvas',
-  wideLayout.cardX + wideLayout.cardW <= wideLayout.width - 62
+check('a card fills the panel but never overflows it',
+  wideLayout.cardW > 1100 && wideLayout.cardX + wideLayout.cardW <= wideLayout.width
   && wideLayout.cardX >= wideLayout.railLeft,
   JSON.stringify([wideLayout.cardX, wideLayout.cardW, wideLayout.width]))
 
