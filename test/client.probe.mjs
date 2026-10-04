@@ -387,6 +387,134 @@ check('a queued rewind changes the signature', signature(basePayload) !== signat
 }))
 check('an empty payload is safe to fingerprint', signature(undefined) === '')
 
+// ── the confirm path, driven end to end against a recording transport ──────
+// This is the code that kept failing in the field (a double rewind, a silent
+// close, a refused-but-invisible apply), so it is exercised directly instead of
+// being trusted.
+const executeRequest = moduleExports.__internals.executeRequest
+const describeRequest = moduleExports.__internals.describeRequest
+
+function recordingDeps(options = {}) {
+  const calls = []
+  const drafts = []
+  const submissions = []
+  const deps = {
+    calls,
+    drafts,
+    submissions,
+    rpc: async (method, params) => {
+      calls.push([method, params])
+      if (options.fail === true) return { ok: false, error: { code: 'session-busy', message: '代理正在执行工具调用' } }
+      if (options.queued === true) return { ok: true, value: { queued: true, checkpointId: params.checkpointId } }
+      if (method === 'apply' && params.conversation === 'inplace') {
+        return { ok: true, value: { queued: false, conversation: { droppedTurns: [1, 2] } } }
+      }
+      if (method === 'apply' && params.workspace === 'restore') {
+        return { ok: true, value: { queued: false, workspace: { restored: 1, recreated: 2, deleted: 3, failed: [] } } }
+      }
+      return { ok: true, value: {} }
+    },
+    forkBranch: async (checkpoint) => {
+      calls.push(['fork', { checkpointId: checkpoint.id }])
+      return options.forkFails === true ? { ok: false, error: { message: 'fork unavailable' } } : { ok: true, childId: 'child-1' }
+    },
+    inputActions: {
+      setDraft: (text) => drafts.push(text),
+      submit: () => submissions.push('submit'),
+    },
+    t,
+  }
+  return deps
+}
+
+const checkpointsForRequest = [
+  { id: 'cpA', afterTurn: 3, prompt: '原始提问' },
+]
+
+{
+  const deps = recordingDeps()
+  const result = await executeRequest(
+    { checkpoint: checkpointsForRequest[0], conversation: 'inplace', workspace: 'none' },
+    deps,
+  )
+  check('an in-place rewind issues exactly one apply',
+    deps.calls.length === 1 && deps.calls[0][0] === 'apply'
+    && deps.calls[0][1].checkpointId === 'cpA' && deps.calls[0][1].conversation === 'inplace'
+    && deps.calls[0][1].workspace === 'none' && deps.calls[0][1].confirm === true,
+    JSON.stringify(deps.calls))
+  check('an in-place rewind reports what it dropped', result.messages.length === 1 && result.messages[0].includes('2'),
+    JSON.stringify(result.messages))
+}
+{
+  const deps = recordingDeps()
+  const result = await executeRequest(
+    { checkpoint: { id: 'cpNewest' }, conversation: 'inplace', reask: true, reaskFrom: 'cpAnchor', text: '改写的提问' },
+    deps,
+  )
+  // The regression that broke this: two applies, the first on the selected row.
+  check('re-asking issues ONE apply, at the anchor, never on the selected row',
+    deps.calls.length === 1 && deps.calls[0][1].checkpointId === 'cpAnchor'
+    && deps.calls.every((call) => call[1].checkpointId !== 'cpNewest'),
+    JSON.stringify(deps.calls))
+  check('re-asking hands the edited prompt to the composer and sends it',
+    deps.drafts[0] === '改写的提问' && deps.submissions.length === 1,
+    JSON.stringify({ drafts: deps.drafts, submissions: deps.submissions }))
+  check('re-asking reports both halves', result.messages.length === 2, JSON.stringify(result.messages))
+}
+{
+  const deps = recordingDeps()
+  await executeRequest({ checkpoint: checkpointsForRequest[0], conversation: 'inplace', workspace: 'restore' }, deps)
+  check('"both" restores the workspace and then the conversation',
+    deps.calls.length === 2
+    && deps.calls[0][1].workspace === 'restore' && deps.calls[0][1].conversation === 'none'
+    && deps.calls[1][1].conversation === 'inplace' && deps.calls[1][1].workspace === 'none',
+    JSON.stringify(deps.calls.map((call) => call[1])))
+}
+{
+  const deps = recordingDeps()
+  await executeRequest({ checkpoint: checkpointsForRequest[0], conversation: 'fork', workspace: 'none' }, deps)
+  check('a fork calls the shipped fork API and no rewind',
+    deps.calls.length === 1 && deps.calls[0][0] === 'fork', JSON.stringify(deps.calls))
+}
+{
+  const deps = recordingDeps({ queued: true })
+  const result = await executeRequest(
+    { checkpoint: { id: 'cpNewest' }, conversation: 'inplace', reask: true, reaskFrom: 'cpAnchor', text: '排队提问' },
+    deps,
+  )
+  check('a queued rewind reports itself and does not send the prompt yet',
+    result.queued === true && result.reask?.text === '排队提问' && result.reask?.checkpointId === 'cpAnchor'
+    && deps.submissions.length === 0,
+    JSON.stringify({ result, submissions: deps.submissions }))
+}
+{
+  const deps = recordingDeps({ fail: true })
+  let message = ''
+  try {
+    await executeRequest({ checkpoint: checkpointsForRequest[0], conversation: 'inplace', workspace: 'none' }, deps)
+  } catch (error) {
+    message = String(error?.message ?? error)
+  }
+  check('a refused apply surfaces the host message instead of closing quietly',
+    message.includes('工具调用'), message)
+}
+{
+  const deps = recordingDeps()
+  let message = ''
+  try {
+    await executeRequest({ checkpoint: checkpointsForRequest[0], conversation: 'none', workspace: 'none' }, deps)
+  } catch (error) {
+    message = String(error?.message ?? error)
+  }
+  check('a request with nothing to do aborts loudly rather than pretending to succeed',
+    message === t('notice.nothingToDo') && deps.calls.length === 0, message)
+}
+check('the footer log names the call a request will issue',
+  describeRequest({ conversation: 'inplace' }) === 'apply(conversation=inplace)'
+  && describeRequest({ reask: true }).includes('anchor')
+  && describeRequest({ conversation: 'fork', workspace: 'restore' }).includes('fork'),
+  JSON.stringify([describeRequest({ conversation: 'inplace' }), describeRequest({ reask: true })]))
+
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
 }))
