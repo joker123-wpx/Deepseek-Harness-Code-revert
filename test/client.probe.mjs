@@ -350,6 +350,32 @@ check('the confirmation dialog warns that the transcript keeps the abandoned tex
 check('the confirmation dialog reports the dropped turn count', dialog.includes('2'))
 check('the dialog contains no emoji', !EMOJI.test(dialog))
 
+// A failure must be reported inside the dialog, next to the button that caused
+// it, and the confirm button must show that it is working.
+const busyDialog = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.ConfirmDialog, {
+  request: { conversation: 'inplace', workspace: 'none', checkpoint: checkpoints[1] },
+  plan: undefined,
+  t,
+  busy: true,
+  error: '代理正在执行工具调用，请等这一轮结束后再回退',
+  onCancel: () => {},
+  onConfirm: () => {},
+}))
+check('a dialog failure is shown where the click happened',
+  busyDialog.includes('代理正在执行工具调用') && busyDialog.includes('data-kind="error"'))
+check('the confirm button reports that it is running',
+  busyDialog.includes(t('action.running')) && busyDialog.includes('rw-spin'))
+const queuedDialog = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.ConfirmDialog, {
+  request: { conversation: 'inplace', workspace: 'none', checkpoint: checkpoints[1] },
+  plan: undefined,
+  t,
+  busy: false,
+  queued: true,
+  onCancel: () => {},
+  onConfirm: () => {},
+}))
+check('a queued rewind says so in the dialog', queuedDialog.includes(t('notice.queued')))
+
 // ── panel with no session ──────────────────────────────────────────────────
 const fakeCtx = { get: () => undefined, effect: () => () => {} }
 const panel = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.RewindPanel, {

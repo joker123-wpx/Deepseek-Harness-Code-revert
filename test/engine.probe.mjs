@@ -428,6 +428,64 @@ check('overview without a session id auto-picks one',
   JSON.stringify({ id: picked.currentSessionId, auto: picked.autoSelected }))
 check('the auto-picked overview still carries the tree', picked.checkpoints.length > 0, String(picked.checkpoints.length))
 
+// ── a rewind requested while the agent is working is held, not refused ─────
+// The panel is normally used mid-turn; refusing outright made the confirm button
+// look dead. The request is queued, reported, and run at the turn boundary.
+const queueCp = await engine.createCheckpoint({
+  sessionId,
+  afterTurn: 1,
+  kind: 'manual',
+  withManifest: true,
+  label: '排队测试',
+  prompt: 'queue',
+})
+engine.enterTool(sessionId)
+// The workspace action is used here because this session's first turn was already
+// rewound by the conversation tests above; the queue itself is action-agnostic.
+const queuedOutcome = await engine.applyOrQueue(queueCp.id, { conversation: 'none', workspace: 'restore' })
+check('a rewind requested during a tool call is queued, not refused',
+  queuedOutcome.queued === true && queuedOutcome.checkpointId === queueCp.id,
+  JSON.stringify(queuedOutcome))
+const pendingSeen = engine.pendingOf(sessionId)
+check('the panel can see what is waiting',
+  pendingSeen?.checkpointId === queueCp.id && pendingSeen.workspace === 'restore',
+  JSON.stringify(pendingSeen))
+check('a queued rewind is held while the tool call is still running',
+  (await engine.drainPending(sessionId)) === undefined && engine.pendingOf(sessionId) !== undefined)
+engine.exitTool(sessionId)
+const drained = await engine.drainPending(sessionId)
+check('the queued rewind runs once the tool call finishes', drained !== undefined,
+  JSON.stringify(engine.pendingResultOf(sessionId)))
+check('the outcome of the queued rewind is reported',
+  engine.pendingResultOf(sessionId)?.ok === true
+  && engine.pendingResultOf(sessionId)?.checkpointId === queueCp.id,
+  JSON.stringify(engine.pendingResultOf(sessionId)))
+check('nothing is left queued after it ran', engine.pendingOf(sessionId) === undefined)
+
+const cancelCp = await engine.createCheckpoint({
+  sessionId, afterTurn: 2, kind: 'manual', withManifest: true, label: '取消测试', prompt: 'cancel',
+})
+engine.enterTool(sessionId)
+await engine.applyOrQueue(cancelCp.id, { conversation: 'none', workspace: 'restore' })
+check('a queued rewind can be called off',
+  engine.cancelPending(sessionId).cancelled === true && engine.pendingOf(sessionId) === undefined)
+engine.exitTool(sessionId)
+check('cancelling leaves nothing to drain', (await engine.drainPending(sessionId)) === undefined)
+
+// ── the overview reports the queue so the panel can say "queued" ───────────
+engine.enterTool(sessionId)
+await engine.applyOrQueue(queueCp.id, { conversation: 'none', workspace: 'restore' })
+const queuedOverview = await engine.overview(sessionId)
+check('the overview carries the pending rewind',
+  queuedOverview.queue?.pending?.checkpointId === queueCp.id,
+  JSON.stringify(queuedOverview.queue))
+engine.exitTool(sessionId)
+await engine.drainPending(sessionId)
+const drainedOverview = await engine.overview(sessionId)
+check('the overview carries the outcome of the last queued rewind',
+  drainedOverview.queue?.pending === undefined && drainedOverview.queue?.last !== undefined,
+  JSON.stringify(drainedOverview.queue))
+
 await fs.rm(sandbox, { recursive: true, force: true })
 
 const failed = results.filter((entry) => !entry.ok)
