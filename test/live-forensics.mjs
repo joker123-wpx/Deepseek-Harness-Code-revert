@@ -177,7 +177,8 @@ const details = ReactDOMServer.renderToStaticMarkup(React.createElement(client.D
   onAction: () => {},
   busy: false,
   plan: undefined,
-  canReask: selectedCheckpoint?.canFork === true,
+  // The panel gates re-asking on the row ABOVE the turn, so ask the real helper.
+  canReask: client.__internals.reaskAnchorFor(overview?.checkpoints ?? [], selectedCheckpoint) !== undefined,
   onClose: () => {},
 }))
 

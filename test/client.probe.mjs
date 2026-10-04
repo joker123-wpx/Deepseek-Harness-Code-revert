@@ -255,6 +255,40 @@ check('the fork canvas fits both lanes', forkLayout.width >= forkLayout.cardX + 
   JSON.stringify({ width: forkLayout.width, cardX: forkLayout.cardX, cardW: forkLayout.cardW }))
 check('the fork rendering contains no emoji', !EMOJI.test(forkTree))
 
+// ── live session/workspace switching ──────────────────────────────────────
+// The shell does not promise to notify a third-party plugin on a workspace or
+// session switch, so the panel subscribes where it can and re-reads on a timer,
+// on focus, and when the tab becomes visible again. What it must never do is
+// keep showing the previous conversation.
+const switchListeners = []
+const switchSessions = {
+  list: {
+    getSnapshot: () => ({ current: activeSessionId, byId: { [activeSessionId]: { id: activeSessionId, cwd: '/ws' } } }),
+    subscribe: (listener) => { switchListeners.push(listener); return () => {} },
+  },
+}
+let activeSessionId = 'session-a'
+const readActiveSession = moduleExports.__internals.readActiveSession
+const switchCtx = { get: (name) => (name === 'sessions' ? switchSessions : undefined), effect: () => () => {} }
+check('the active session is read from the shell list', readActiveSession(switchCtx).sessionId === 'session-a',
+  JSON.stringify(readActiveSession(switchCtx)))
+activeSessionId = 'session-b'
+check('a list notification switches the active session', (() => {
+  for (const listener of switchListeners) listener()
+  return readActiveSession(switchCtx).sessionId === 'session-b'
+})(), JSON.stringify(readActiveSession(switchCtx)))
+// Snapshot shapes vary; every known spelling of the active id must be honoured.
+for (const [key, expected] of [['activeId', 'a1'], ['active', 'a2'], ['selected', 'a3']]) {
+  const ctx = {
+    get: () => ({ list: { getSnapshot: () => ({ [key]: expected }) } }),
+    effect: () => () => {},
+  }
+  check(`the active session is read when the shell names it \`${key}\``,
+    readActiveSession(ctx).sessionId === expected, JSON.stringify(readActiveSession(ctx)))
+}
+check('an unreadable list leaves the session unresolved rather than wrong',
+  readActiveSession({ get: () => ({ list: { getSnapshot: () => ({}) } }), effect: () => () => {} }).sessionId === undefined)
+
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
 }))
