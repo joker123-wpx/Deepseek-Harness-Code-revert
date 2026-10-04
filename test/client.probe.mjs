@@ -596,8 +596,11 @@ check('the drawer is positioned too, so its backdrop cannot cover it',
 // The panel used to hug the window's right edge (96vw wide, rounded on one corner
 // only), which read as "very long, with uneven margins".
 check('the panel has equal left and right margins',
-  /\.rw-overlay-layer\{[^}]*padding:var\(--rw-titlebar-height\) 14px 14px 14px/.test(sheet),
-  /\.rw-overlay-layer\{[^}]*\}/.exec(sheet)?.[0]?.slice(0, 110))
+  /\.rw-overlay-layer\{[^}]*padding:var\(--rw-titlebar-height\) 14px 14px 14px/.test(sheet)
+  // Centred, or the left gap would be the leftover space while the right gap was
+  // only the padding — the lopsided look that was reported twice.
+  && /\.rw-overlay-layer\{[^}]*justify-content:center/.test(sheet),
+  /\.rw-overlay-layer\{[^}]*\}/.exec(sheet)?.[0]?.slice(0, 130))
 check('the panel is a rounded card, not a flush edge',
   /\.rw-drawer\{[^}]*width:min\(860px,100%\)/.test(sheet)
   && /\.rw-drawer\{[^}]*border:1px solid/.test(sheet)
