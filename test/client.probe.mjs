@@ -945,6 +945,23 @@ check('the cards keep their width however many branches there are',
   check('the closest snapshot wins when there is a choice',
     nearest?.id === 'cp2b', JSON.stringify(nearest?.id))
 }
+// ── a GREYED row's snapshot is not a restore point ─────────────────────────
+// Reported: re-asking 84 restored the tree of 83 — the turn that had just been greyed
+// ("delete every digit"), so the new prompt ran against the emptied tree. A greyed row
+// is history; the memory to come back to is the nearest LIVE row before it (82).
+{
+  const rows = [
+    { id: 'cp82', sessionId: 's1', afterTurn: 82, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'a' },
+    // 83 was re-asked: greyed, and its snapshot is the emptied tree — never use it.
+    { id: 'cp83', sessionId: 's1', afterTurn: 83, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'delete every digit' },
+    { id: 'cp84', sessionId: 's1', afterTurn: 84, manifest: false, canRestoreWorkspace: false, reachable: true, prompt: 'change 3 to 7' },
+  ]
+  const liveIds = new Set(['cp82', 'cp84'])
+  const picked = moduleExports.__internals.restoreAnchorFor(
+    rows.filter((row) => liveIds.has(row.id)), rows[2])
+  check('a re-ask never restores from a greyed row',
+    picked?.id === 'cp82', JSON.stringify(picked?.id))
+}
 // ── the confirm dialog names the turn ranges ───────────────────────────────
 // Asked for: "the prompt when rolling back is unclear — it keeps asking me about
 // earlier information". It must say which turns are kept and which are removed.
