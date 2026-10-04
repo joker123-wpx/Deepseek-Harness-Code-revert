@@ -753,6 +753,31 @@ check('the timeline draws no branch title text',
     && markup.includes('y="100"') && markup.includes('y="107"'),
     `strikes=${strikes.length} y=${strikeY.join(',')}`)
 }
+// ── the newest branch's numbers are bold white ─────────────────────────────
+// Asked for: "the new turn's rail number should be bold white type". The lane the
+// conversation is on is the only one that is not history, so its numbers are the only
+// ones drawn in full contrast; rewound rows stay dim and struck through.
+{
+  const headRows = [
+    { id: 'cp0', sessionId: 's1', afterTurn: 0, manifest: true, prompt: '第一轮' },
+    { id: 'cp1', sessionId: 's1', afterTurn: 1, manifest: true, prompt: '被回退的一轮', abandoned: true },
+    { id: 'cp2', sessionId: 's1', afterTurn: 2, manifest: true, prompt: '最新的一轮' },
+  ]
+  const headGraph = graphFor([{ id: 's1', title: '会话', live: true }], headRows, { width: 900, limit: 10 ** 9 })
+  const markup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
+    layout: headGraph.layout, currentSessionId: 's1', onSelect: () => {}, t,
+  }))
+  const gutters = [...markup.matchAll(/<text[^>]*text-anchor="end"[^>]*>([^<]*)<\/text>/g)]
+    .map((match) => match[0])
+  const bold = gutters.filter((tag) => tag.includes('font-weight="700"'))
+  const dim = gutters.filter((tag) => tag.includes('var(--rw-fg-3)'))
+  check('the live branch number is bold white and the rewound one is not',
+    // Three gutter labels: the anchor, the rewound row and the head. Only the head is
+    // bold white; the two history rows stay dim.
+    bold.length === 1 && dim.length === 2
+    && bold[0].includes('var(--rw-fg)'),
+    JSON.stringify({ gutters: gutters.length, bold: bold.length, dim: dim.length }))
+}
 // ── the graph never squeezes the rows ──────────────────────────────────────
 // Asked for: "the rail UI must not squeeze the other UI — if there are too many
 // lines, compress its own width". So the card column is identical whatever the
