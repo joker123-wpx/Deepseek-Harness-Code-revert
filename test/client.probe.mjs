@@ -234,10 +234,11 @@ check('a backup row is never used as a re-ask anchor',
 check('the initial row cannot be re-asked', anchorFor(anchorRows, anchorRows[0]) === undefined)
 check('a row with no prompt cannot be re-asked',
   anchorFor(anchorRows, { ...anchorRows[1], prompt: '' }) === undefined)
-check('a turn whose user message is off the surface cannot be re-asked',
-  anchorFor([{ ...anchorRows[1], reachable: false }, anchorRows[2]], anchorRows[2])?.id === undefined
-  || anchorFor([{ ...anchorRows[1], reachable: false }, anchorRows[2]], anchorRows[2]) === undefined,
-  JSON.stringify(anchorFor([{ ...anchorRows[1], reachable: false }, anchorRows[2]], anchorRows[2])))
+check('a turn whose user message is off the surface can still be re-asked',
+  // The anchor comes from the declared range now, so the old reachability gate no longer
+  // applies: files being gone must not grey the button out.
+  anchorFor([{ ...anchorRows[1], reachable: false }, anchorRows[2]], anchorRows[2])?.id === 'a1',
+  JSON.stringify(anchorFor([{ ...anchorRows[1], reachable: false }, anchorRows[2]], anchorRows[2])?.id))
 
 // ── a rewind must read as a fork, not as one straight line ────────────────
 // The abandoned run keeps its lane as dead wood; the live continuation moves to
@@ -990,17 +991,20 @@ check('the cards keep their width however many branches there are',
     { id: 'cp104', sessionId: 's1', afterTurn: 104, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'b' },
     { id: 'cp105', sessionId: 's1', afterTurn: 105, manifest: false, canRestoreWorkspace: false, reachable: true, prompt: 'c' },
   ]
-  // The anchor is the row before the FIRST re-ask of this line: 104 was re-asked (its
-  // replacement moved the line on), so the anchor is 100 — and it stays 100 no matter
-  // how many times the new turns are re-asked in turn.
-  const withFlag = [{ ...rows[1], ownTurnRewound: true }, rows[2]]
-  const anchor = moduleExports.__internals.reaskAnchorFor([...rows.slice(0, 1), ...withFlag], rows[2])
-  check('re-asking the newest turn anchors on the row before the first re-ask',
-    anchor?.id === 'cp100', JSON.stringify(anchor?.id))
-  const next = { id: 'cp180', sessionId: 's1', afterTurn: 180, manifest: false, canRestoreWorkspace: false, reachable: true, prompt: 'd' }
-  const later = moduleExports.__internals.reaskAnchorFor(
-    [rows[0], { ...rows[1], ownTurnRewound: true }, { ...rows[2], ownTurnRewound: true }, next], next)
-  check('and it is still 121-style after many re-asks', later?.id === 'cp100', JSON.stringify(later?.id))
+  // The anchor is the row before the START of the range the turn sits in, so it does not
+  // move as the line is re-asked again: their words — "122's re-ask goes back to 121, and
+  // even after re-asking up to 180 the memory is still 121's completion record".
+  const cuts = [{ fromTurn: 122, toTurn: 180, count: 59 }]
+  const line = [
+    { id: 'cp120', sessionId: 's1', afterTurn: 120, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'w' },
+    { id: 'cp121', sessionId: 's1', afterTurn: 121, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'x' },
+    { id: 'cp122', sessionId: 's1', afterTurn: 122, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'y' },
+    { id: 'cp180', sessionId: 's1', afterTurn: 180, manifest: false, canRestoreWorkspace: false, reachable: true, prompt: 'z' },
+  ]
+  const first = moduleExports.__internals.reaskAnchorFor(line, line[2], cuts)
+  check('re-asking 122 anchors on 121', first?.id === 'cp121', JSON.stringify(first?.id))
+  const later = moduleExports.__internals.reaskAnchorFor(line, line[3], cuts)
+  check('and re-asking 180 still anchors on 121', later?.id === 'cp121', JSON.stringify(later?.id))
 }
 // ── the confirm dialog names the turn ranges ───────────────────────────────
 // Asked for: "the prompt when rolling back is unclear — it keeps asking me about
