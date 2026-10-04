@@ -305,49 +305,78 @@ for (const [key, expected] of [['activeId', 'a1'], ['active', 'a2'], ['selected'
 check('an unreadable list leaves the session unresolved rather than wrong',
   readActiveSession({ get: () => ({ list: { getSnapshot: () => ({}) } }), effect: () => () => {} }).sessionId === undefined)
 
-// ── a long timeline folds, and folds back open ────────────────────────────
-const folderize = moduleExports.__internals.folderize
-const manyRows = Array.from({ length: 14 }, (_, index) => ({ id: `r${index}`, afterTurn: index }))
-const folded = folderize(manyRows, false, 10)
-check('a long timeline folds its older rows into one inline summary',
-  folded.visible.length === 12 && folded.fold.count === 3
-  && folded.visible[0].id === 'r0' && folded.visible[1].__fold === true
-  && folded.visible[2].id === 'r4' && folded.visible[11].id === 'r13',
-  JSON.stringify({ visible: folded.visible.map((row) => row.id), fold: folded.fold }))
-check('the summary keeps the folded range and its place in the order',
-  folded.fold.turnFrom === 1 && folded.fold.turnTo === 3 && folded.fold.collapsed === true
-  && folded.visible[0].afterTurn === 0 && folded.visible[1].afterTurn === 1,
-  JSON.stringify(folded.fold))
-const unfolded = folderize(manyRows, true, 10)
-check('the folded rows come back in place on request',
-  unfolded.visible.length === 14 && unfolded.fold.collapsed === false
-  && unfolded.visible.every((row) => row.__fold !== true))
-check('a short timeline is never folded',
-  folderize(manyRows.slice(0, 10), false, 10).fold === undefined
-  && folderize(manyRows.slice(0, 3), false, 10).visible.length === 3)
-check('the fold copy names the range it hides',
-  typeof t('panel.foldRow') === 'string' && t('panel.foldRow').includes('{count}')
-  && t('panel.foldRow').includes('{from}') && t('panel.foldRow').includes('{to}'))
+// ── blocks of ten fold as a whole ─────────────────────────────────────────
+// The rule, as asked for: cut blocks of ten from the oldest end, fold only full
+// blocks, never fold the first row. 21 rows therefore show 1 row and hide 20.
+const groupRows = moduleExports.__internals.groupRows
+const rowsOf = (count) => Array.from({ length: count }, (_, index) => ({
+  id: `r${index}`, afterTurn: index, sessionId: 's1', manifest: true, prompt: `问 ${index}`,
+}))
+const none = new Set()
 
-// The layout must not leave blank space where a folded range used to be: rows are
-// consecutive slots, so the first visible row sits directly under the summary.
+const twentyOne = groupRows(rowsOf(21), none, 10)
+check('21 rows fold into two blocks of ten, leaving one row',
+  twentyOne.visible.length === 3
+  && twentyOne.groups.length === 2
+  && twentyOne.groups.every((group) => group.count === 10 && group.collapsed === true)
+  && twentyOne.visible[0].id === 'r0'
+  && twentyOne.visible[1].__group === true && twentyOne.visible[2].__group === true,
+  JSON.stringify({
+    visible: twentyOne.visible.map((row) => row.id ?? row.__group),
+    groups: twentyOne.groups.map((group) => [group.from, group.to, group.count, group.collapsed]),
+  }))
+check('the first block starts at the second row and ends at row ten',
+  twentyOne.groups[0].from === 1 && twentyOne.groups[0].to === 10
+  && twentyOne.groups[1].from === 11 && twentyOne.groups[1].to === 20)
+check('the folded count is 20 of 21',
+  21 - twentyOne.visible.filter((row) => row.__group !== true).length === 20,
+  String(21 - twentyOne.visible.filter((row) => row.__group !== true).length))
+
+const opened = groupRows(rowsOf(21), new Set([1]), 10)
+check('opening one block reveals exactly its ten rows',
+  opened.visible.length === 13
+  && opened.groups[0].collapsed === false && opened.groups[1].collapsed === true
+  && opened.visible.filter((row) => row.__group !== true).length === 11,
+  JSON.stringify({ visible: opened.visible.length, collapsed: opened.groups.map((group) => group.collapsed) }))
+
+const fifteen = groupRows(rowsOf(15), none, 10)
+check('a partial trailing block never folds',
+  fifteen.groups.length === 2
+  && fifteen.groups[1].count === 4 && fifteen.groups[1].foldable === false
+  && fifteen.visible.filter((row) => row.__group !== true).length === 5,
+  JSON.stringify({ groups: fifteen.groups.map((group) => [group.count, group.foldable]), visible: fifteen.visible.length }))
+
+check('ten rows or fewer never fold',
+  groupRows(rowsOf(10), none, 10).groups.length === 0
+  && groupRows(rowsOf(3), none, 10).visible.length === 3)
+check('eleven rows fold exactly one block', (() => {
+  const eleven = groupRows(rowsOf(11), none, 10)
+  return eleven.groups.length === 1 && eleven.groups[0].foldable === true
+    && eleven.visible.length === 2 && eleven.visible[0].id === 'r0'
+})())
+check('the first row survives every fold state',
+  twentyOne.visible[0].id === 'r0' && fifteen.visible[0].id === 'r0' && opened.visible[0].id === 'r0')
+check('a block header carries the range and its state for the control',
+  twentyOne.visible[1].from === 1 && twentyOne.visible[1].to === 10
+  && twentyOne.visible[1].count === 10 && twentyOne.visible[1].collapsed === true)
+check('the block copy names its range and count',
+  typeof t('panel.groupRow') === 'string' && t('panel.groupRow').includes('{count}')
+  && t('panel.groupRow').includes('{from}') && t('panel.groupRow').includes('{to}'))
+
+// The layout must not leave blank space where a folded block used to be.
 const foldLayout = moduleExports.buildLayout(
   [{ id: 's1', title: '会话', live: true }],
-  folded.visible.map((row) => ({ ...row, sessionId: 's1', manifest: true, prompt: '' })),
+  twentyOne.visible,
   { width: 700 },
 )
 const foldRows = foldLayout.nodes.slice().sort((a, b) => a.row - b.row)
 check('the folded timeline is compact: one row pitch per visible row',
-  foldRows.every((node, index) => index === 0 || node.row === foldRows[index - 1].row + 1
-    && node.y - foldRows[index - 1].y === 54),
+  foldRows.every((node, index) => index === 0 || (node.row === foldRows[index - 1].row + 1
+    && node.y - foldRows[index - 1].y === 54)),
   JSON.stringify(foldRows.map((node) => [node.row, node.y])))
-check('the fold summary is its own row slot', foldRows[1].fold === true)
-check('the first row is never folded away',
-  folded.visible[0].id === 'r0' && unfolded.visible[0].id === 'r0'
-  && folded.visible.some((row) => row.id === 'r0'))
-check('a collapsed fold asks for a + control, an expanded one for a -',
-  folded.fold.collapsed === true && unfolded.fold.collapsed === false)
-check('no blank space is left above the newest rows', foldLayout.height <= 54 * 12 + 80,
+check('a block header is its own row slot',
+  foldRows.filter((node) => node.group === true).length === 2 && foldRows[1].group === true)
+check('no blank space is left above the newest rows', foldLayout.height <= 54 * 5,
   String(foldLayout.height))
 
 // ── polling must not rebuild the graph ─────────────────────────────────────
@@ -524,25 +553,29 @@ const foldSessions = [{ id: 's1', title: '会话', live: true }]
 const foldCheckpoints = Array.from({ length: 16 }, (_, index) => ({
   id: `g${index}`, sessionId: 's1', afterTurn: index, kind: 'auto', manifest: true, prompt: `问 ${index}`,
 }))
-const collapsedGraph = graphFor(foldSessions, foldCheckpoints, { expanded: false, limit: 10, width: 900 })
-const expandedGraph = graphFor(foldSessions, foldCheckpoints, { expanded: true, limit: 10, width: 900 })
+const collapsedGraph = graphFor(foldSessions, foldCheckpoints, { expandedGroups: new Set(), limit: 10, width: 900 })
+const expandedGraph = graphFor(foldSessions, foldCheckpoints, {
+  expandedGroups: new Set(foldCheckpoints.slice(1, 11).map((row) => row.afterTurn)),
+  limit: 10,
+  width: 900,
+})
 check('the collapsed graph draws fewer rows than the expanded one',
   collapsedGraph.layout.nodes.length < expandedGraph.layout.nodes.length
-  && collapsedGraph.layout.nodes.length === 12 && expandedGraph.layout.nodes.length === 16,
+  && collapsedGraph.layout.nodes.length === 7 && expandedGraph.layout.nodes.length === 17,
   JSON.stringify([collapsedGraph.layout.nodes.length, expandedGraph.layout.nodes.length]))
-check('the collapsed graph carries the fold summary row',
-  collapsedGraph.visible.some((row) => row.__fold === true)
-  && expandedGraph.visible.every((row) => row.__fold !== true))
+check('the collapsed graph carries block headers',
+  collapsedGraph.visible.filter((row) => row.__group === true).length === 1
+  && collapsedGraph.visible.length === 7)
 check('the collapsed graph is shorter than the expanded one',
   collapsedGraph.layout.height < expandedGraph.layout.height,
   JSON.stringify([collapsedGraph.layout.height, expandedGraph.layout.height]))
-check('the toggle keeps the first row and adds a summary in its place',
+check('a collapsed block hides exactly ten rows',
   collapsedGraph.visible[0].id === 'g0'
-  && collapsedGraph.visible.length === expandedGraph.visible.length - 4,
+  && expandedGraph.visible.length - collapsedGraph.visible.length === 10,
   JSON.stringify(collapsedGraph.visible.map((row) => row.id)))
-check('the fold control has a row to attach to in both states',
-  collapsedGraph.layout.nodes.some((node) => node.fold === true)
-  && expandedGraph.layout.nodes.some((node) => node.turn === expandedGraph.fold.turnFrom))
+check('the block header has a row to attach the control to',
+  collapsedGraph.layout.nodes.some((node) => node.group === true)
+  && expandedGraph.layout.nodes.some((node) => node.group === true))
 
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,

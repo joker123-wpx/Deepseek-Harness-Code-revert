@@ -165,7 +165,7 @@ const t = (key, params) => {
 // The panel folds a long timeline to its newest ten rows. The preview does the
 // same, so what it shows matches the app; panel 3 below is expanded on purpose,
 // to show the fork in full.
-const foldState = client.__internals.folderize(overview?.checkpoints ?? [], false, 10)
+const foldState = client.__internals.groupRows(overview?.checkpoints ?? [], new Set(), 10)
 const layout = client.buildLayout(overview?.sessions ?? [], foldState.visible, { width: 900 })
 const selectedCheckpoint = overview?.checkpoints?.slice(-1)[0]
 const renderTree = (selectedId) => ReactDOMServer.renderToStaticMarkup(React.createElement(client.TreeGraph, {
@@ -173,9 +173,8 @@ const renderTree = (selectedId) => ReactDOMServer.renderToStaticMarkup(React.cre
   selectedId,
   currentSessionId: overview?.currentSessionId,
   onSelect: () => {},
-  // The +/− control beside the rail, exactly as the panel passes it.
-  fold: foldState.fold,
-  onToggleFold: () => {},
+  // The per-block +/− control, exactly as the panel passes it.
+  onToggleGroup: () => {},
   t,
 }))
 const tree = renderTree(undefined)
