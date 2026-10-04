@@ -735,7 +735,10 @@ check('the details pane explains why a rewound turn cannot be rewound again', de
 // The prompt is editable, and a checkpoint with a rewind target can be re-asked.
 check('a checkpoint without a prompt shows no prompt editor', !details.includes('<textarea'))
 check('an editable prompt offers no re-ask without a rewind target',
-  !details.includes(t('action.reask')) || details.includes(t('notice.reaskExplain')))
+  /disabled="[^>]*>[^<]*(回退|rewind)/i.test(details) || details.includes(t('notice.reaskExplain')),
+  details.slice(Math.max(0, details.indexOf(t('notice.reaskViaAgent')) - 90), details.indexOf(t('notice.reaskViaAgent')) + 8))
+check('a row without a rewind target shows the disabled control with its reason',
+  details.includes(t('notice.reaskViaAgent')) || details.includes(t('action.reask')))
 
 const reaskDetails = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.DetailsPane, {
   checkpoint: { ...checkpoints[2], canFork: true, reachable: true, prompt: '原始提问' },
@@ -746,9 +749,45 @@ const reaskDetails = ReactDOMServer.renderToStaticMarkup(React.createElement(mod
   busy: false,
   plan: undefined,
   canReask: true,
+  // With in-place writes available, the gold control keeps its destructive wording.
+  inplace: true,
+}))
+// With in-place writes unavailable (this release) the gold control delegates the
+// work to the agent instead of disappearing; with them available it keeps the
+// documented destructive wording.
+const delegatedDetails = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.DetailsPane, {
+  checkpoint: { ...checkpoints[2], canFork: true, reachable: true, prompt: '原始提问' },
+  session: sessions[0],
+  workspace: 'C:/ws',
+  t,
+  onAction: () => {},
+  busy: false,
+  plan: undefined,
+  canReask: true,
+  inplace: false,
+  inplaceReason: '面板在空闲时无法安全写入',
 }))
 check('a checkpoint with a rewind target can be re-asked',
   reaskDetails.includes(t('action.reask')) && reaskDetails.includes(t('notice.reaskExplain')))
+check('the re-ask control names the delegation when the panel cannot write',
+  delegatedDetails.includes(t('notice.reaskViaAgent')) && delegatedDetails.includes(t('notice.agentExplain'))
+  && !delegatedDetails.includes('disabled=""'),
+  delegatedDetails.slice(Math.max(0, delegatedDetails.indexOf(t('notice.reaskViaAgent')) - 80), delegatedDetails.indexOf(t('notice.reaskViaAgent')) + 10))
+// The probe's local `t` does not interpolate params, so the template is checked
+// for its placeholders and the filled-in result is asserted with a local fill.
+const fill = (text, params) => String(text)
+  .replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? `{${name}}`))
+const reaskPrompt = moduleExports.__internals.agentRewindPrompt(t, {
+  checkpointId: 'cp-anchor', turn: 9, prompt: '改写的提问',
+})
+const reaskTemplate = t('notice.agentRewindReask')
+check('the delegated prompt names the anchor checkpoint and the rewritten text',
+  reaskTemplate.includes('{checkpointId}') && reaskTemplate.includes('{turn}') && reaskTemplate.includes('{prompt}')
+  && fill(reaskPrompt, { checkpointId: 'cp-anchor', turn: 9, prompt: '改写的提问' }).includes('cp-anchor')
+  && fill(reaskPrompt, { checkpointId: 'cp-anchor', turn: 9, prompt: '改写的提问' }).includes('改写的提问')
+  && fill(moduleExports.__internals.agentRewindPrompt(t, { checkpointId: 'cp-anchor' }),
+    { checkpointId: 'cp-anchor' }).includes('cp-anchor'),
+  reaskPrompt.slice(0, 120))
 check('the prompt is an editable field', reaskDetails.includes('<textarea')
   && reaskDetails.includes(t('detail.promptHint')), reaskDetails.slice(0, 0) || '')
 check('the editable prompt shows the turn prompt', reaskDetails.includes('原始提问'))

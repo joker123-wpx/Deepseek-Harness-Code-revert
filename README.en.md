@@ -29,6 +29,7 @@ go back to any of them.
 | Model tool | A `rewind` tool lets the agent list checkpoints and (only when the user asks) perform a rollback. |
 | Held rewinds retry | A held rewind is never dropped because the next round already started: the host keeps it and retries every 1.5s (about a minute), running it at the first quiet moment and reporting a timeout if there is none. It also records the calling browser build and the recent state-changing calls, readable from `status`. |
 | Action log | The footer keeps the last confirmed action (for example `apply(conversation=inplace) -> ...`), red on failure and amber when queued, so "the click did nothing" becomes a fact you can screenshot. |
+| Re-ask while idle | The panel cannot write the session log safely while a conversation is idle (a rewind marker must sit inside an open turn/step), so those two actions are delegated to the agent: the panel composes "checkpoint id + your rewritten prompt" into the composer and sends it, and the agent performs the rewind with its own tool inside its turn, then continues with the rewritten prompt. The control is relabelled so it never claims to rewrite the log itself. |
 | Build self-check | The footer shows `v<version>+<build>`; when the browser build and the host-reported build disagree (page refreshed without a restart, or the reverse) the header shows "host half is older · restart the app". "Still broken after the fix" can then be told apart from "the old bundle is still loaded". |
 | Follows switches | After a workspace or session switch the panel follows the new conversation on its own: it subscribes to the session list and the workspace registry, re-reads the active session every 1.2s and refreshes the overview every 3s (skipped while the window is hidden), and clears the selection, details and any pending confirmation immediately. |
 | Bilingual copy | Chinese / English. The plugin binds its own locale namespace instead of trusting the shell's injected `t`. |
@@ -160,7 +161,7 @@ lib/conversation.js  session side: turn analysis, surface fold, rewind dialects
 lib/store.js         persistence: CAS blobs, manifests, index, trash, GC
 lib/rpc.js           transport: one RPC route with a loopback fence
 lib/client.js        browser half: three slots, SVG tree, details pane, dialogs
-test/                7 offline probes + 2 diagnostics (411 assertions)
+test/                7 offline probes + 2 diagnostics (415 assertions)
 ```
 
 ```bash
