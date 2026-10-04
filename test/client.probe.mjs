@@ -681,6 +681,41 @@ check('a block header is drawn as a control with its range, not as a selected ro
   && !/rw-node[^"]*"[^>]*aria-pressed="true"/.test(headerMarkup.split('rw-groupbtn')[0] ?? ''),
   headerMarkup.slice(0, 0) + `controls=${(headerMarkup.match(/rw-groupbtn/g) ?? []).length}`)
 
+// ── every action the panel offers must reach a real branch ─────────────────
+// A banner reading "nothing to run" means a confirmed action fell through every
+// branch of the executor. Nothing in the UI may produce such a request, so the
+// shapes the panel builds are driven through the executor and must all act.
+const uiRequests = [
+  ['conversationFork', { conversation: 'fork', workspace: 'none' }],
+  ['conversationInplace', { conversation: 'inplace', workspace: 'none' }],
+  ['workspace', { conversation: 'none', workspace: 'restore' }],
+  ['bothFork', { conversation: 'fork', workspace: 'restore' }],
+  ['bothInplace', { conversation: 'inplace', workspace: 'restore' }],
+  ['restoreSafetyWorkspace', { conversation: 'none', workspace: 'restore' }],
+]
+const fellThrough = []
+for (const [action, shape] of uiRequests) {
+  const deps = recordingDeps()
+  try {
+    await executeRequest({ ...shape, checkpoint: { id: 'cpA', afterTurn: 3 } }, deps)
+    if (deps.calls.length === 0) fellThrough.push(`${action}: no call issued`)
+  } catch (error) {
+    if (String(error?.message ?? '').includes(t('notice.nothingToDo'))) fellThrough.push(`${action}: nothing-to-do`)
+  }
+}
+{
+  const deps = recordingDeps()
+  try {
+    await executeRequest({ checkpoint: { id: 'cpA' }, conversation: 'inplace', reask: true, reaskFrom: 'cpA', text: '改' }, deps)
+  } catch (error) {
+    fellThrough.push(`reask: ${String(error?.message ?? '')}`)
+  }
+}
+check('every panel action reaches a real branch of the executor',
+  fellThrough.length === 0, JSON.stringify(fellThrough))
+check('the dismiss control exists so a banner can be cleared by hand',
+  typeof t('action.dismiss') === 'string' && t('action.dismiss').length > 0)
+
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
 }))
