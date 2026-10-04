@@ -158,7 +158,11 @@ const client = globalThis.__rewindHandoff.factory((specifier) => {
 })
 const t = (key) => client.dictionaries.zh[key] ?? key
 
-const layout = client.buildLayout(overview?.sessions ?? [], overview?.checkpoints ?? [], { width: 900 })
+// The panel folds a long timeline to its newest ten rows. The preview does the
+// same, so what it shows matches the app; panel 3 below is expanded on purpose,
+// to show the fork in full.
+const folded = client.__internals.partitionRows(overview?.checkpoints ?? [], false, 10)
+const layout = client.buildLayout(overview?.sessions ?? [], folded.visible, { width: 900 })
 const selectedCheckpoint = overview?.checkpoints?.slice(-1)[0]
 const renderTree = (selectedId) => ReactDOMServer.renderToStaticMarkup(React.createElement(client.TreeGraph, {
   layout,
@@ -309,12 +313,18 @@ const footer = `<div class="rw-foot">
   </a>
   ${button(t('action.close'), 'quiet')}
 </div>`
+// The same fold row the panel draws above a folded timeline. Panel 3 passes its
+// own (expanded) graph, so it gets no fold row.
+const foldRow = folded.hiddenCount === 0 ? '' : `<button class="rw-fold" type="button">`
+  + '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style="flex:none;display:block">'
+  + '<path fill="currentColor" d="M7 2.2a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6ZM7 5.7a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6ZM7 9.2a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6Z"/></svg>'
+  + `<span>${t('panel.foldOlder').replace('{count}', String(folded.hiddenCount))}</span></button>`
 const panel = (graph, side) => `<div class="drawer">
   ${header}
   <div class="body">
     <div class="graph">
       <div class="rw-legend">${legend}</div>
-      <div class="scroll">${graph}</div>
+      <div class="scroll">${graph === treeAfter ? '' : foldRow}${graph}</div>
     </div>
     ${side}
   </div>
@@ -357,7 +367,7 @@ ${client.css ?? ''}
 ${panel(tree, '')}
 <div class="caption">② 选中某个检查点：右侧出现详情；提问可编辑，金色按钮＝回退并重新提问</div>
 ${panel(treeSelected, `<div class="side">${details}</div>`)}
-<div class="caption">③ 点了金色按钮之后（示例：回退到第 ${rewindFromTurn} 轮之前并改写提问）：第 ${rewindFromTurn}–${lastTurn} 轮变灰＋虚线＋「已回退」，底部新增第 ${newTurn} 轮</div>
+<div class="caption">③ 点了金色按钮之后（此块展开全部轮次以看清分叉；示例：回退到第 ${rewindFromTurn} 轮之前并改写提问）：第 ${rewindFromTurn}–${lastTurn} 轮变灰＋虚线＋「已回退」，底部新增第 ${newTurn} 轮</div>
 ${panel(treeAfter, '')}
 <div class="chat">
   <div class="note">下面是聊天区的示意（产品自带的输入框，不属于插件 UI）：回退后插件把改写的提问放进输入框并提交。</div>

@@ -21,6 +21,7 @@ go back to any of them.
 | Rewind conversation (forget in place) | Appends one surface-replacement event to the current session: the model no longer sees the rewound turns, the log keeps every byte, and the tree draws them as an abandoned branch. What the chat window already displayed is unchanged. |
 | Roll back workspace files | Restores modified files, recreates deleted ones, removes files created since — per workspace, then aggregated. A "pre-rollback backup" checkpoint is taken first, so the rollback is itself undoable. |
 | Attribution | The tree distinguishes *rewound by this plugin*, *folded away by compaction*, *replaced by an in-history system-prompt update*, *replaced by another producer*, and *conversation-only, no file snapshot*. Nothing is blamed on the wrong actor. |
+| Folding long timelines | Past ten rows the timeline shows only the newest ten, with one row above them saying how many are folded and expanding them on click; expanding offers "fold the older turns away" in the same spot. Short conversations never fold. |
 | Queued while the agent works | Confirming a rewind while the agent is running a tool call neither fails nor goes quiet: the request is **queued**, the panel says so (with a cancel control), and it runs when the turn ends. A queued edit-and-re-ask sends the edited prompt once the rewind lands. |
 | Fork after a rewind | An in-place rewind forks the model-visible history: the folded-away turns become a **grey dashed dead branch** on their own rail, and a **new rail opens to the right** of the rewind point, joined by a curve that runs from the rewind point straight to the new turn's node. The curve never overlaps the dead rail, so it is obvious where the cut was made. |
 | Tree graph | Git-log style: a turn gutter on the left, then one continuous rail per branch with a junction dot per checkpoint, then a full-width row card (a 3px left stripe encodes the kind; line one is the turn plus a state badge, line two the prompt excerpt plus the snapshot size). Selection carries exactly one signal — the card's accent outline and tint. All artwork is SVG paths; strictly **no emoji**. |
@@ -156,7 +157,7 @@ lib/conversation.js  session side: turn analysis, surface fold, rewind dialects
 lib/store.js         persistence: CAS blobs, manifests, index, trash, GC
 lib/rpc.js           transport: one RPC route with a loopback fence
 lib/client.js        browser half: three slots, SVG tree, details pane, dialogs
-test/                7 offline probes + 2 diagnostics (321 assertions)
+test/                7 offline probes + 2 diagnostics (325 assertions)
 ```
 
 ```bash

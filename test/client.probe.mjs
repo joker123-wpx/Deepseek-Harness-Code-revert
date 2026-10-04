@@ -289,6 +289,23 @@ for (const [key, expected] of [['activeId', 'a1'], ['active', 'a2'], ['selected'
 check('an unreadable list leaves the session unresolved rather than wrong',
   readActiveSession({ get: () => ({ list: { getSnapshot: () => ({}) } }), effect: () => () => {} }).sessionId === undefined)
 
+// ── a long timeline folds, and folds back open ────────────────────────────
+const partitionRows = moduleExports.__internals.partitionRows
+const manyRows = Array.from({ length: 14 }, (_, index) => ({ id: `r${index}`, afterTurn: index }))
+const folded = partitionRows(manyRows, false, 10)
+check('a long timeline folds to its newest rows',
+  folded.visible.length === 10 && folded.hiddenCount === 4
+  && folded.visible[0].id === 'r4' && folded.visible[9].id === 'r13',
+  JSON.stringify({ visible: folded.visible.map((row) => row.id), hidden: folded.hiddenCount }))
+const unfolded = partitionRows(manyRows, true, 10)
+check('the folded rows come back on request',
+  unfolded.visible.length === 14 && unfolded.hiddenCount === 0)
+check('a short timeline is never folded',
+  partitionRows(manyRows.slice(0, 10), false, 10).hiddenCount === 0
+  && partitionRows(manyRows.slice(0, 3), false, 10).visible.length === 3)
+check('the fold control says how many rows are hidden',
+  typeof t('panel.foldOlder') === 'string' && t('panel.foldOlder').includes('{count}'))
+
 const empty = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
   layout: { nodes: [], edges: [], width: 0, height: 0 }, selectedId: undefined, currentSessionId: undefined, onSelect: () => {}, t,
 }))
