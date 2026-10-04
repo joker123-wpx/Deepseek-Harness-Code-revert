@@ -722,6 +722,27 @@ check('the timeline draws no branch title text',
       && !visible.includes('做一个deepseek')
   })(),
   'no branch title painted over the rows')
+// ── a rewound row shows no turn number at all ──────────────────────────────
+// Asked for: "don't show the turn number on rewound conversations — neither the rail
+// gutter nor the session row". A dead row is off the model's history, and numbering it
+// made the dead run read as if it were still part of the conversation.
+{
+  const deadRows = [
+    { id: 'cp0', sessionId: 's1', afterTurn: 0, manifest: true, prompt: '第一轮', abandoned: false },
+    { id: 'cp1', sessionId: 's1', afterTurn: 1, manifest: true, prompt: '被回退的一轮', abandoned: true },
+    { id: 'cp2', sessionId: 's1', afterTurn: 2, manifest: true, prompt: '新的一轮', abandoned: false },
+  ]
+  const deadGraph = graphFor([{ id: 's1', title: '会话', live: true }], deadRows, { width: 900, limit: 10 ** 9 })
+  const markup = ReactDOMServer.renderToStaticMarkup(React.createElement(moduleExports.TreeGraph, {
+    layout: deadGraph.layout, currentSessionId: 's1', onSelect: () => {}, t,
+  }))
+  // The dead row contributes no number anywhere: its gutter label and its card title
+  // are both empty, while its prompt is still shown and the live rows keep theirs.
+  const numbers = (markup.match(/轮次/g) ?? []).length
+  check('a rewound row shows no turn number anywhere',
+    numbers === 2 && !markup.includes('轮次 1') && markup.includes('被回退的一轮'),
+    `numbers=${numbers}`)
+}
 // ── the graph never squeezes the rows ──────────────────────────────────────
 // Asked for: "the rail UI must not squeeze the other UI — if there are too many
 // lines, compress its own width". So the card column is identical whatever the
