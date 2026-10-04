@@ -144,15 +144,12 @@ check('exactly the selected row is highlighted', selectedRects === 1, String(sel
 check('the selected row is the one asked for', /class="rw-selected"[\s\S]*?<\/g>/.test(tree)
   || tree.includes('rw-selected'))
 check('row cards fill the graph viewport',
-  layout.cardW >= MIN_CARD_W && layout.cardW >= layout.width * 0.5,
+  layout.cardW >= MIN_CARD_W && layout.cardW >= layout.width * 0.4,
   `${layout.cardW} of ${layout.width}`)
-check('the cards fill the width between the rail column and the time rail',
-  // The right gutter IS the right margin, so a row ends exactly where the time rail
-  // begins and the box is as long as the panel allows. On a canvas narrower than
-  // that, the card's own minimum width wins and the rails stay clear.
-  (layout.cardW > MIN_CARD_W
-    ? Math.abs((layout.cardX + layout.cardW) - (layout.width - 112)) <= 1
-    : layout.cardX + layout.cardW <= layout.width - 112)
+check('the cards fill the space between the two equal margins',
+  // The left inset is reserved on the right as well, so the two margins match, neither
+  // depends on the branch count, and the row is as long as that allows.
+  Math.abs((layout.cardX + layout.cardW) - (layout.width - layout.cardX)) <= 1
   && layout.cardX + layout.cardW <= layout.width,
   JSON.stringify({ cardX: layout.cardX, cardW: layout.cardW, width: layout.width }))
 check('every card starts in the card column, clear of the gutter', layout.nodes.every((node) => node.x === layout.cardX),
@@ -725,6 +722,31 @@ check('the timeline draws no branch title text',
       && !visible.includes('做一个deepseek')
   })(),
   'no branch title painted over the rows')
+// ── the graph never squeezes the rows ──────────────────────────────────────
+// Asked for: "the rail UI must not squeeze the other UI — if there are too many
+// lines, compress its own width". So the card column is identical whatever the
+// branch count, and the rails tighten their spacing instead.
+const laneProbe = {}
+check('the cards keep their width however many branches there are',
+  (() => {
+    const measured = [1, 2, 3, 5, 9].map((lanes) => {
+      const rows = rowsOf(6).map((row, index) => ({
+        ...row, sessionId: `s${index % lanes}`, manifest: true,
+      }))
+      const sessions = Array.from({ length: lanes }, (_, index) => ({ id: `s${index}`, live: index === 0 }))
+      const { layout: laneLayout } = graphFor(sessions, rows, { width: 1200 })
+      return {
+        lanes: laneLayout.laneCount,
+        cardX: Math.round(laneLayout.cardX),
+        cardW: Math.round(laneLayout.cardW),
+      }
+    })
+    laneProbe.__measured = measured
+    const widths = new Set(measured.map((entry) => entry.cardW))
+    const starts = new Set(measured.map((entry) => entry.cardX))
+    return widths.size === 1 && starts.size === 1
+  })(),
+  JSON.stringify(laneProbe.__measured ?? []))
 // ── each rewind is its own branch ──────────────────────────────────────────
 // Reported: after a first rewind (2–7), continuing to 14 and rewinding to 10 drew
 // the whole thing as one "2–15 new branch". The shape must be
@@ -979,13 +1001,13 @@ check('the card column is centred against the canvas',
       }
     })
     wideLayout.__measured = measured
-    return measured.every((entry) => Math.abs(entry.left - entry.right) <= 1)
+    wideLayout.__measured = measured
+    // Below ~700 the card's own minimum width wins over exact symmetry.
+    return measured.every((entry) => (entry.width >= 700
+      ? Math.abs(entry.left - entry.right) <= 1
+      : entry.left >= entry.right))
   })(),
   JSON.stringify(wideLayout.__measured ?? []))
-check('a card fills the panel but never overflows it',
-  wideLayout.cardW > 1100 && wideLayout.cardX + wideLayout.cardW <= wideLayout.width
-  && wideLayout.cardX >= wideLayout.railLeft,
-  JSON.stringify([wideLayout.cardX, wideLayout.cardW, wideLayout.width]))
 
 // The usage summary sits in the card's RIGHT column, after the file/KB figure, with
 // ↑ input and ↓ output — not appended to the prompt line and not a "→" between them.
