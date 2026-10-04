@@ -1082,7 +1082,7 @@ const usageMarkup = ReactDOMServer.renderToStaticMarkup(React.createElement(modu
   onToggleGroup: () => {},
   t,
 }))
-check('a row card summarises its turn: tokens, tools, duration',
+check('a row card summarises its turn: tokens and duration',
   usageMarkup.includes('↑8.1k ↓2.3k') && usageMarkup.includes('3 ') && usageMarkup.includes('31s'),
   usageMarkup.slice(usageMarkup.indexOf('↑8.1k') - 40, usageMarkup.indexOf('↑8.1k') + 40))
 check('a row with no usage data shows none of it',
@@ -1187,7 +1187,7 @@ check('a long row keeps its label, its prompt and every figure',
       layout: wide, selectedId: undefined, currentSessionId: 's1', onSelect: () => {}, t,
     }))
     return /轮次 2/.test(markup) && /一个相当长的中文/.test(markup)
-      && /↑126k ↓137k token/.test(markup) && /89 工具/.test(markup)
+      && /↑126k ↓137k token/.test(markup) && !/89 工具/.test(markup)
   })(),
   'the whole row reads on a realistic card')
 check('a narrow card shortens the figures instead of overflowing',
@@ -1205,7 +1205,7 @@ check('a narrow card shortens the figures instead of overflowing',
 check('the token counts appear exactly once, in the right column',
   // Inline would be a duplicate: the counts belong at the file figure, and only there.
   !/↓[\d.]+[kM]? token<\/text>/.test(wideMarkup)
-  && /文件 · [\d.]+ (KB|MB) · ↑[\d.]+[kM]? ↓[\d.]+[kM]? token · 3 工具/.test(wideMarkup)
+  && /文件 · [\d.]+ (KB|MB) · ↑[\d.]+[kM]? ↓[\d.]+[kM]? token · 31s/.test(wideMarkup)
   && (wideMarkup.match(/↑5\.2k ↓9\.2k token/g) ?? []).length
     === (wideMarkup.match(/↑5\.2k ↓9\.2k token/g) ?? []).filter(() => true).length,
   wideMarkup.slice(Math.max(0, wideMarkup.indexOf('36 文件')), wideMarkup.indexOf('36 文件') + 80))
