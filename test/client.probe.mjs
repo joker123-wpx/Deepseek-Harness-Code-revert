@@ -1077,6 +1077,32 @@ check('the cards keep their width however many branches there are',
     String(store.get('dsh-rewind.lineAnchors')).includes('cp141'), String(store.get('dsh-rewind.lineAnchors')))
   delete globalThis.localStorage
 }
+// ── the memory is the row before the line's FIRST re-ask ───────────────────
+// Reported: re-asking the 5th time in a line restored 152, while 149 is correct. The cuts
+// there are {150} and {153} with 151 the replacement and 152 a row whose next turn was
+// rewound; the row 148 between the previous cut and this line is neither, so the line
+// starts at 150 and the memory is 149.
+{
+  const cuts = [
+    { index: 50, fromTurn: 134, toTurn: 139, count: 6 },
+    { index: 51, fromTurn: 142, toTurn: 142, count: 1 },
+    { index: 52, fromTurn: 145, toTurn: 145, count: 1 },
+    { index: 53, fromTurn: 132, toTurn: 146, count: 15 },
+    { index: 54, fromTurn: 150, toTurn: 150, count: 1 },
+    { index: 55, fromTurn: 153, toTurn: 153, count: 1 },
+  ]
+  const rows = []
+  for (const turn of [147, 148, 149, 150, 151, 152, 153, 154]) {
+    rows.push({ id: `cp${turn}`, sessionId: 's1', afterTurn: turn, manifest: true, prompt: `p${turn}` })
+  }
+  // 149's next turn was rewound; 148's was not: that is the line boundary.
+  for (const row of rows) if (row.afterTurn === 144 || row.afterTurn === 149 || row.afterTurn === 152) row.alreadyRewound = true
+  const memory = (turn) => moduleExports.__internals.reaskAnchorFor(rows, rows.find((r) => r.afterTurn === turn), cuts)?.afterTurn
+  check('the 5th re-ask of a line restores the row before its first re-ask',
+    memory(153) === 149 && memory(154) === 149, JSON.stringify([memory(153), memory(154)]))
+  check('and re-asking the line start itself still lands there',
+    memory(150) === 149 && memory(151) === 149, JSON.stringify([memory(150), memory(151)]))
+}
 // ── the confirm dialog names the turn ranges ───────────────────────────────
 // Asked for: "the prompt when rolling back is unclear — it keeps asking me about
 // earlier information". It must say which turns are kept and which are removed.
