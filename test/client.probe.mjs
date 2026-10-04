@@ -924,6 +924,27 @@ check('the cards keep their width however many branches there are',
     && !calls.some(([method, id, workspace]) => method === 'apply' && workspace === 'restore' && id === 'cp-after'),
     JSON.stringify(calls))
 }
+// ── a re-ask finds the nearest snapshot, not "no snapshot → skip" ──────────
+// Reported: "delete every digit → re-ask as change 3 to 7 → re-ask THAT as delete every
+// 3", and the second re-ask ran against the emptied tree. Its anchor row had no
+// snapshot, so the restore was skipped and the workspace stayed as the previous re-ask
+// had left it: emptied.
+{
+  const rows = [
+    { id: 'cp1', sessionId: 's1', afterTurn: 1, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'a' },
+    { id: 'cp2', sessionId: 's1', afterTurn: 2, manifest: false, canRestoreWorkspace: false, reachable: true, prompt: 'b' },
+    { id: 'cp3', sessionId: 's1', afterTurn: 3, manifest: false, canRestoreWorkspace: false, reachable: true, prompt: 'c' },
+  ]
+  const picked = moduleExports.__internals.restoreAnchorFor(rows, rows[2])
+  check('a re-ask falls back to the nearest earlier snapshot',
+    picked?.id === 'cp1', JSON.stringify(picked?.id))
+  const nearest = moduleExports.__internals.restoreAnchorFor(
+    [rows[1], { id: 'cp2b', sessionId: 's1', afterTurn: 2, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'b2' }, rows[2]],
+    rows[2],
+  )
+  check('the closest snapshot wins when there is a choice',
+    nearest?.id === 'cp2b', JSON.stringify(nearest?.id))
+}
 // ── the confirm dialog names the turn ranges ───────────────────────────────
 // Asked for: "the prompt when rolling back is unclear — it keeps asking me about
 // earlier information". It must say which turns are kept and which are removed.
