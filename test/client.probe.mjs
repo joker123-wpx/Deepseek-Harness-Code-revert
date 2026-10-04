@@ -979,6 +979,25 @@ check('the cards keep their width however many branches there are',
     pick(rows[2]) === 'cp100' && pick({ ...rows[2], id: 'cp106', afterTurn: 106 }) === 'cp100',
     JSON.stringify({ first: pick(rows[2]), second: pick({ ...rows[2], id: 'cp106', afterTurn: 106 }) }))
 }
+// ── re-asking the newest turn must not anchor on a greyed row ──────────────
+// Reported: "I re-ask from the newest turn and it still activates the grey one". The
+// anchor (where the conversation cuts) and the memory both have to ignore rows that are
+// off this branch, otherwise the newest turn anchors on the last greyed row instead of
+// the last live one.
+{
+  const rows = [
+    { id: 'cp100', sessionId: 's1', afterTurn: 100, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'a' },
+    { id: 'cp104', sessionId: 's1', afterTurn: 104, manifest: true, canRestoreWorkspace: true, reachable: true, prompt: 'b' },
+    { id: 'cp105', sessionId: 's1', afterTurn: 105, manifest: false, canRestoreWorkspace: false, reachable: true, prompt: 'c' },
+  ]
+  const liveIds = new Set(['cp100', 'cp105'])
+  const anchor = moduleExports.__internals.reaskAnchorFor(rows, rows[2], liveIds)
+  check('re-asking the newest turn anchors on the last live row, not a greyed one',
+    anchor?.id === 'cp100', JSON.stringify(anchor?.id))
+  const withoutSet = moduleExports.__internals.reaskAnchorFor(rows, rows[2])
+  check('without a live set the old behaviour is still available (and would pick 104)',
+    withoutSet?.id === 'cp104', JSON.stringify(withoutSet?.id))
+}
 // ── the confirm dialog names the turn ranges ───────────────────────────────
 // Asked for: "the prompt when rolling back is unclear — it keeps asking me about
 // earlier information". It must say which turns are kept and which are removed.
